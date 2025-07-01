@@ -3,7 +3,7 @@ import { View, Text, TextInput, Alert, KeyboardAvoidingView, Platform, Pressable
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import StyledButton from '@/components/StyledButton';
-import { useAuthContext } from '../../context/AuthContext'; // Import useAuthContext
+import { useAuthContext } from '@/context/AuthContext'; // Import useAuthContext
 
 const OTP_LENGTH = 6;
 
@@ -86,7 +86,6 @@ export default function OTPScreen() {
             {otp.map((digit, index) => (
               <TextInput
                 key={index}
-                ref={(ref) => (inputRefs.current[index] = ref)}
                 className={`border ${otpError ? 'border-red-500' : 'border-gray-300'} w-12 h-14 rounded-lg text-center text-xl bg-white text-gray-700`}
                 value={digit}
                 onChangeText={(text) => handleOtpChange(text, index)}
@@ -109,7 +108,7 @@ export default function OTPScreen() {
 
           <Pressable onPress={handleResendOtp} className="mt-6">
             <Text className="text-sm text-blue-500 font-semibold">
-              Didn't receive code? Resend OTP
+              Didnt receive code? Resend OTP
             </Text>
           </Pressable>
 
