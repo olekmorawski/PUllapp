@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import StyledButton from '@/components/StyledButton';
@@ -60,17 +60,6 @@ export default function LoginScreen() {
             variant="primary"
             className="w-full" // Use className for width instead of style prop for Tailwind consistency
           />
-
-          <View className="mt-6">
-            <Text className="text-sm text-gray-600">
-              Don't have an account?{' '}
-              <TouchableOpacity onPress={() => router.push('/(auth)/signup')}>
-                <Text className="text-blue-500 font-semibold">
-                  Sign Up
-                </Text>
-              </TouchableOpacity>
-            </Text>
-          </View>
 
         </View>
       </KeyboardAvoidingView>
