@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView from 'react-native-maps';
+import { useRouter } from 'expo-router'; // Import useRouter
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { BottomSheet } from "@/components/BottomSheet";
@@ -10,6 +11,7 @@ import { Map } from "@/components/Map";
 export default function RideAppInterface() {
     const [isSidebarVisible, setIsSidebarVisible] = useState(false);
     const mapRef = useRef<MapView>(null);
+    const router = useRouter(); // Initialize router
 
     // Default region (you can customize this)
     const initialRegion = {
@@ -25,36 +27,32 @@ export default function RideAppInterface() {
 
     const handleNotificationPress = () => {
         console.log('Navigate to notifications');
-        // router.push('/notifications');
+        // router.push('/(tabs)/notifications'); // Example: if notifications is a tab screen
     };
 
     const handleProfilePress = () => {
-        console.log('Navigate to profile');
-        // router.push('/profile');
+        router.push('/(tabs)/profile');
         setIsSidebarVisible(false);
     };
 
     const handleHistoryPress = () => {
-        console.log('Navigate to ride history');
-        // router.push('/history');
+        router.push('/(tabs)/history');
         setIsSidebarVisible(false);
     };
 
     const handlePaymentPress = () => {
         console.log('Navigate to payment');
-        // router.push('/payment');
+        // router.push('/(tabs)/payment'); // Example: if payment is a tab screen
         setIsSidebarVisible(false);
     };
 
     const handleSettingsPress = () => {
-        console.log('Navigate to settings');
-        // router.push('/settings');
+        router.push('/(tabs)/settings');
         setIsSidebarVisible(false);
     };
 
     const handleBecomeDriverPress = () => {
-        console.log('Navigate to become a driver flow');
-        // router.push('/become-driver');
+        router.push('/(tabs)/become-driver');
         setIsSidebarVisible(false);
     };
 

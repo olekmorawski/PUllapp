@@ -5,25 +5,62 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import '../global.css'
 import { useColorScheme } from '@/hooks/useColorScheme';
+import React, { useEffect } from 'react'; // Ensure React is imported for useEffect
+import { useRouter, useSegments } from 'expo-router';
+import { AuthProvider, useAuthContext } from '../context/AuthContext'; // Import AuthProvider and useAuthContext
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
+// This is the component that will contain the navigation logic
+function RootNavigation() {
+  const colorScheme = useColorScheme(); // Assuming useColorScheme is a custom hook
+  const { isAuthenticated } = useAuthContext(); // Use context-based auth state
+  const segments = useSegments();
+  const router = useRouter();
+  const [fontsLoaded] = useFonts({ // Renamed `loaded` to `fontsLoaded` for clarity
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  if (!loaded) {
-    // Async font loading only occurs in development.
-    return null;
+  useEffect(() => {
+    if (!fontsLoaded) return;
+
+    const inAuthGroup = segments[0] === '(auth)';
+
+    // Debugging logs
+    // console.log('Auth State Changed:', isAuthenticated);
+    // console.log('Current Segments:', segments);
+    // console.log('In Auth Group:', inAuthGroup);
+
+
+    if (isAuthenticated && inAuthGroup) {
+      // console.log('Redirecting to /tabs');
+      router.replace('/(tabs)');
+    } else if (!isAuthenticated && !inAuthGroup && segments[0] !== undefined) {
+      // Added segments[0] !== undefined to prevent redirect on initial load when segments might be empty
+      // console.log('Redirecting to /login');
+      router.replace('/(auth)/login'); // Corrected path to /auth/login
+    }
+  }, [isAuthenticated, segments, fontsLoaded, router]);
+
+  if (!fontsLoaded) {
+    return null; // Or a custom splash screen component
   }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
+  );
+}
+
+// RootLayout now wraps RootNavigation with AuthProvider
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <RootNavigation />
+    </AuthProvider>
   );
 }
