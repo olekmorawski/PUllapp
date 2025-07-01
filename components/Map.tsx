@@ -1,5 +1,5 @@
 import React from "react";
-import MapView from "react-native-maps";
+import MapView, { PROVIDER_GOOGLE } from "react-native-maps";
 
 interface Props {
     mapRef: React.RefObject<MapView>;
@@ -22,6 +22,7 @@ export const Map = ({ mapRef, initialRegion, className }: Props) => {
             showsCompass={true}
             loadingEnabled={true}
             initialRegion={initialRegion}
+            provider={PROVIDER_GOOGLE}
         />
     );
 };
