@@ -5,7 +5,6 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9d9da520-e21e-480b-b7dd-86b0e0d98276" name="Changes" comment="removed logo">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/BottomSheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BottomSheet.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -23,7 +22,7 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
-    "git-widget-placeholder": "main-ix",
+    "git-widget-placeholder": "main",
     "node.js.selected.package.tslint": "(autodetect)",
     "ts.external.directory.path": "/Users/aleksandermorawski/Desktop/Projects/PullUp/node_modules/typescript/lib"
   }

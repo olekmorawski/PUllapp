@@ -239,9 +239,6 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                     >
                         <View className="flex-row items-center justify-between mb-4">
                             <Text className="text-lg font-semibold text-gray-800">Choose a ride</Text>
-                            <TouchableOpacity onPress={collapseSheet}>
-                                <Ionicons name="chevron-down" size={24} color="#6B7280" />
-                            </TouchableOpacity>
                         </View>
 
                         <View className="gap-4">
