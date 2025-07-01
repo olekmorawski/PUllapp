@@ -1,18 +1,16 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import { styled } from 'nativewind';
+import { TouchableOpacity, Text, ViewStyle, TextStyle } from 'react-native';
 
 interface StyledButtonProps {
   title: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary';
-  style?: ViewStyle;
-  textStyle?: TextStyle;
+  style?: ViewStyle; // Allow passing additional styles
+  textStyle?: TextStyle; // Allow passing additional text styles
+  className?: string; // Allow passing additional Tailwind classes for the button
+  textClassName?: string; // Allow passing additional Tailwind classes for the text
   disabled?: boolean;
 }
-
-const StyledTouchableOpacity = styled(TouchableOpacity);
-const StyledText = styled(Text);
 
 const StyledButton: React.FC<StyledButtonProps> = ({
   title,
@@ -20,6 +18,8 @@ const StyledButton: React.FC<StyledButtonProps> = ({
   variant = 'primary',
   style,
   textStyle,
+  className = '',
+  textClassName = '',
   disabled = false,
 }) => {
   const baseButtonClasses = "py-3 px-6 rounded-lg items-center justify-center shadow-md";
@@ -40,17 +40,17 @@ const StyledButton: React.FC<StyledButtonProps> = ({
   }
 
   return (
-    <StyledTouchableOpacity
+    <TouchableOpacity
       onPress={onPress}
-      className={`${baseButtonClasses} ${buttonVariantClasses}`}
-      style={style}
+      className={`${baseButtonClasses} ${buttonVariantClasses} ${className}`}
+      style={style} // Pass through any custom ViewStyle props
       disabled={disabled}
       activeOpacity={0.8}
     >
-      <StyledText className={`${baseTextClasses} ${textVariantClasses}`} style={textStyle}>
+      <Text className={`${baseTextClasses} ${textVariantClasses} ${textClassName}`} style={textStyle}>
         {title}
-      </StyledText>
-    </StyledTouchableOpacity>
+      </Text>
+    </TouchableOpacity>
   );
 };
 

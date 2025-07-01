@@ -1,17 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity as RNTouchableOpacity } from 'react-native';
+import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import StyledButton from '@/components/StyledButton';
-import { styled } from 'nativewind';
-
-const StyledView = styled(View);
-const StyledText = styled(Text);
-const StyledTextInput = styled(TextInput);
-const StyledScrollView = styled(ScrollView);
-const StyledTouchableOpacity = styled(RNTouchableOpacity);
-
 
 interface FormFieldProps {
   label: string;
@@ -36,9 +28,9 @@ const FormField: React.FC<FormFieldProps> = ({
   multiline = false,
   numberOfLines = 1
 }) => (
-  <StyledView className="mb-4">
-    <StyledText className="text-sm font-medium text-gray-700 mb-1 ml-1">{label}</StyledText>
-    <StyledTextInput
+  <View className="mb-4">
+    <Text className="text-sm font-medium text-gray-700 mb-1 ml-1">{label}</Text>
+    <TextInput
       className={`border ${error ? 'border-red-500' : 'border-gray-300'} p-3 rounded-lg text-base bg-white text-gray-700 ${multiline ? 'h-24' : ''}`}
       placeholder={placeholder}
       value={value}
@@ -50,8 +42,8 @@ const FormField: React.FC<FormFieldProps> = ({
       numberOfLines={multiline ? numberOfLines : 1}
       textAlignVertical={multiline ? 'top' : 'center'}
     />
-    {error ? <StyledText className="text-red-500 mt-1 ml-1 text-xs">{error}</StyledText> : null}
-  </StyledView>
+    {error ? <Text className="text-red-500 mt-1 ml-1 text-xs">{error}</Text> : null}
+  </View>
 );
 
 
@@ -67,7 +59,7 @@ export default function BecomeDriverScreen() {
     vehicleModel: '',
     vehicleYear: '',
     vehiclePlate: '',
-    motivation: '', // Why do you want to be a driver?
+    motivation: '',
   });
 
   const [formErrors, setFormErrors] = useState<Record<keyof typeof formData, string | null>>({
@@ -85,13 +77,17 @@ export default function BecomeDriverScreen() {
   const handleChange = (name: keyof typeof formData, value: string) => {
     setFormData(prev => ({ ...prev, [name]: value }));
     if (formErrors[name]) {
-      setFormErrors(prev => ({ ...prev, [name]: null })); // Clear error on change
+      setFormErrors(prev => ({ ...prev, [name]: null }));
     }
   };
 
   const validateForm = () => {
     let valid = true;
-    const newErrors: Record<keyof typeof formData, string | null> = { ...formErrors };
+    const newErrors: Record<keyof typeof formData, string | null> = {
+        fullName: null, email: null, phoneNumber: null, address: null,
+        licenseNumber: null, vehicleModel: null, vehicleYear: null,
+        vehiclePlate: null, motivation: null
+    }; // Initialize all to null
 
     if (!formData.fullName.trim()) {
       newErrors.fullName = 'Full name is required.';
@@ -134,7 +130,6 @@ export default function BecomeDriverScreen() {
         'Thank you for your interest! We will review your application and get back to you soon.',
         [{ text: 'OK', onPress: () => router.back() }]
       );
-      // Here you would typically send data to a backend server
     } else {
       Alert.alert('Validation Error', 'Please correct the errors in the form.');
     }
@@ -147,32 +142,32 @@ export default function BecomeDriverScreen() {
           headerShown: true,
           title: 'Become a Driver',
           headerLeft: () => (
-            <StyledTouchableOpacity onPress={() => router.back()} className="ml-4">
+            <TouchableOpacity onPress={() => router.back()} className="ml-4">
               <Ionicons name="arrow-back" size={24} color="black" />
-            </StyledTouchableOpacity>
+            </TouchableOpacity>
           ),
         }}
       />
 
-      <StyledScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 20 }}>
-        <StyledView className="p-5">
-          <StyledText className="text-xl font-semibold text-gray-800 mb-2">Driver Application</StyledText>
-          <StyledText className="text-sm text-gray-600 mb-6">
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 20 }}>
+        <View className="p-5">
+          <Text className="text-xl font-semibold text-gray-800 mb-2">Driver Application</Text>
+          <Text className="text-sm text-gray-600 mb-6">
             Fill out the form below to apply to become a driver with us.
-          </StyledText>
+          </Text>
 
           <FormField label="Full Name" placeholder="Enter your full name" value={formData.fullName} onChangeText={text => handleChange('fullName', text)} error={formErrors.fullName} />
           <FormField label="Email Address" placeholder="your.email@example.com" value={formData.email} onChangeText={text => handleChange('email', text)} keyboardType="email-address" error={formErrors.email} />
           <FormField label="Phone Number" placeholder="(000) 000-0000" value={formData.phoneNumber} onChangeText={text => handleChange('phoneNumber', text)} keyboardType="phone-pad" error={formErrors.phoneNumber} />
           <FormField label="Home Address" placeholder="123 Main St, City, Country" value={formData.address} onChangeText={text => handleChange('address', text)} error={formErrors.address} />
 
-          <StyledText className="text-lg font-semibold text-gray-700 mt-6 mb-3">License & Vehicle Information</StyledText>
+          <Text className="text-lg font-semibold text-gray-700 mt-6 mb-3">License & Vehicle Information</Text>
           <FormField label="Driver's License Number" placeholder="Enter your license number" value={formData.licenseNumber} onChangeText={text => handleChange('licenseNumber', text)} error={formErrors.licenseNumber} />
           <FormField label="Vehicle Model" placeholder="e.g., Toyota Camry" value={formData.vehicleModel} onChangeText={text => handleChange('vehicleModel', text)} error={formErrors.vehicleModel} />
           <FormField label="Vehicle Year" placeholder="e.g., 2020" value={formData.vehicleYear} onChangeText={text => handleChange('vehicleYear', text)} keyboardType="numeric" error={formErrors.vehicleYear} />
           <FormField label="Vehicle License Plate" placeholder="e.g., ABC-123" value={formData.vehiclePlate} onChangeText={text => handleChange('vehiclePlate', text)} error={formErrors.vehiclePlate} />
 
-          <StyledText className="text-lg font-semibold text-gray-700 mt-6 mb-3">Additional Information</StyledText>
+          <Text className="text-lg font-semibold text-gray-700 mt-6 mb-3">Additional Information</Text>
           <FormField
             label="Why do you want to become a driver?"
             placeholder="Briefly explain your motivation..."
@@ -183,20 +178,19 @@ export default function BecomeDriverScreen() {
             numberOfLines={4}
           />
 
-          {/* Placeholder for document uploads - complex UI, not in scope for simple form */}
-          <StyledView className="my-4 p-3 border border-dashed border-gray-400 rounded-lg items-center">
+          <View className="my-4 p-3 border border-dashed border-gray-400 rounded-lg items-center">
             <Ionicons name="cloud-upload-outline" size={32} color="#6B7280" />
-            <StyledText className="text-gray-600 mt-1 text-sm">Document Upload (e.g., License, Insurance) - UI Placeholder</StyledText>
-          </StyledView>
+            <Text className="text-gray-600 mt-1 text-sm">Document Upload (e.g., License, Insurance) - UI Placeholder</Text>
+          </View>
 
           <StyledButton
             title="Submit Application"
             onPress={handleSubmit}
             variant="primary"
-            style={{ marginTop: 24 }}
+            className="mt-6" // Use className for margin
           />
-        </StyledView>
-      </StyledScrollView>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }

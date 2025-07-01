@@ -1,15 +1,10 @@
 import React from 'react';
-import { View, Text, FlatList, StyleSheet } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity } from 'react-native'; // Use TouchableOpacity from react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons'; // For a back button icon
-import { styled } from 'nativewind';
+import { Ionicons } from '@expo/vector-icons';
 
-const StyledView = styled(View);
-const StyledText = styled(Text);
-const StyledTouchableOpacity = styled(TouchableOpacity); // Will use Pressable from react-native later if needed
-
-// Mock Data for Ride History
+// Mock Data for Ride History (assuming this remains unchanged)
 const mockRideHistory = [
   {
     id: '1',
@@ -50,10 +45,10 @@ interface RideItemProps {
 }
 
 const RideItem: React.FC<RideItemProps> = ({ item }) => (
-  <StyledView className="bg-white p-4 mb-4 rounded-lg shadow-sm border border-gray-200">
-    <StyledView className="flex-row justify-between items-center mb-2">
-      <StyledText className="text-lg font-semibold text-gray-800">{item.date}</StyledText>
-      <StyledText
+  <View className="bg-white p-4 mb-4 rounded-lg shadow-sm border border-gray-200">
+    <View className="flex-row justify-between items-center mb-2">
+      <Text className="text-lg font-semibold text-gray-800">{item.date}</Text>
+      <Text
         className={`text-sm font-medium px-2 py-1 rounded-full ${
           item.status === 'Completed' ? 'bg-green-100 text-green-700' :
           item.status === 'Cancelled' ? 'bg-red-100 text-red-700' :
@@ -61,18 +56,18 @@ const RideItem: React.FC<RideItemProps> = ({ item }) => (
         }`}
       >
         {item.status}
-      </StyledText>
-    </StyledView>
-    <StyledView className="mb-1">
-      <StyledText className="text-xs text-gray-500">From:</StyledText>
-      <StyledText className="text-base text-gray-700">{item.pickup}</StyledText>
-    </StyledView>
-    <StyledView className="mb-2">
-      <StyledText className="text-xs text-gray-500">To:</StyledText>
-      <StyledText className="text-base text-gray-700">{item.dropoff}</StyledText>
-    </StyledView>
-    <StyledText className="text-lg font-bold text-right text-blue-600">{item.price}</StyledText>
-  </StyledView>
+      </Text>
+    </View>
+    <View className="mb-1">
+      <Text className="text-xs text-gray-500">From:</Text>
+      <Text className="text-base text-gray-700">{item.pickup}</Text>
+    </View>
+    <View className="mb-2">
+      <Text className="text-xs text-gray-500">To:</Text>
+      <Text className="text-base text-gray-700">{item.dropoff}</Text>
+    </View>
+    <Text className="text-lg font-bold text-right text-blue-600">{item.price}</Text>
+  </View>
 );
 
 export default function RideHistoryScreen() {
@@ -85,14 +80,14 @@ export default function RideHistoryScreen() {
           headerShown: true,
           title: 'Ride History',
           headerLeft: () => (
-            <StyledTouchableOpacity onPress={() => router.back()} className="ml-4">
+            <TouchableOpacity onPress={() => router.back()} className="ml-4">
               <Ionicons name="arrow-back" size={24} color="black" />
-            </StyledTouchableOpacity>
+            </TouchableOpacity>
           ),
         }}
       />
 
-      <StyledView className="flex-1 p-4">
+      <View className="flex-1 p-4">
         {mockRideHistory.length > 0 ? (
           <FlatList
             data={mockRideHistory}
@@ -101,14 +96,11 @@ export default function RideHistoryScreen() {
             showsVerticalScrollIndicator={false}
           />
         ) : (
-          <StyledView className="flex-1 justify-center items-center">
-            <StyledText className="text-lg text-gray-500">No ride history yet.</StyledText>
-          </StyledView>
+          <View className="flex-1 justify-center items-center">
+            <Text className="text-lg text-gray-500">No ride history yet.</Text>
+          </View>
         )}
-      </StyledView>
+      </View>
     </SafeAreaView>
   );
 }
-
-// Need to import TouchableOpacity for StyledTouchableOpacity
-import { TouchableOpacity } from 'react-native-gesture-handler';
