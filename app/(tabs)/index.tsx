@@ -9,7 +9,7 @@ import { Map } from "@/components/Map";
 
 export default function RideAppInterface() {
     const [isSidebarVisible, setIsSidebarVisible] = useState(false);
-    const mapRef = useRef<MapView>(null); // Create proper map ref
+    const mapRef = useRef<MapView>(null);
 
     // Default region (you can customize this)
     const initialRegion = {
@@ -52,6 +52,12 @@ export default function RideAppInterface() {
         setIsSidebarVisible(false);
     };
 
+    const handleBecomeDriverPress = () => {
+        console.log('Navigate to become a driver flow');
+        // router.push('/become-driver');
+        setIsSidebarVisible(false);
+    };
+
     const handleRideSelect = (ride: any) => {
         console.log('Selected ride:', ride);
     };
@@ -88,6 +94,7 @@ export default function RideAppInterface() {
                 onHistoryPress={handleHistoryPress}
                 onPaymentPress={handlePaymentPress}
                 onSettingsPress={handleSettingsPress}
+                onBecomeDriverPress={handleBecomeDriverPress}
             />
         </SafeAreaView>
     );

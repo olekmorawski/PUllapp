@@ -12,7 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.olekmorawski.PullUp",
       "config": {
-        "googleMapsApiKey": "AIzaSyDUajutuM1VCrVSbV1Ks5Okt1RDC55hmVc"
+        "googleMapsApiKey": "AIzaSyD7Z9TTNdp6ko6N2w5EqMLoqdCsB_mlBRk"
       },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show nearby rides and services.",
@@ -28,7 +28,7 @@
       "package": "com.olekmorawski.PullUp",
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyDUajutuM1VCrVSbV1Ks5Okt1RDC55hmVc"
+          "apiKey": "AIzaSyD7Z9TTNdp6ko6N2w5EqMLoqdCsB_mlBRk"
         }
       }
     },
