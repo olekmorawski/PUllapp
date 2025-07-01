@@ -27,21 +27,21 @@ interface RideOption {
     id: number;
     type: string;
     time: string;
-    price: string;
+    suggestedRange: string;
     icon: string;
 }
 
 interface BottomSheetProps {
     rideOptions?: RideOption[];
-    onRideSelect?: (ride: RideOption) => void;
+    onRideSelect?: (ride: RideOption, customPrice: string) => void;
     onConfirmRide?: () => void;
 }
 
 export const BottomSheet: React.FC<BottomSheetProps> = ({
                                                             rideOptions = [
-                                                                { id: 1, type: 'RideX', time: '2 min', price: '$8-12', icon: '🚗' },
-                                                                { id: 2, type: 'RideXL', time: '3 min', price: '$15-22', icon: '🚙' },
-                                                                { id: 3, type: 'RidePremium', time: '5 min', price: '$25-35', icon: '🖤' },
+                                                                { id: 1, type: 'RideX', time: '2 min', suggestedRange: '$8-12', icon: '🚗' },
+                                                                { id: 2, type: 'RideXL', time: '3 min', suggestedRange: '$15-22', icon: '🚙' },
+                                                                { id: 3, type: 'RidePremium', time: '5 min', suggestedRange: '$25-35', icon: '🖤' },
                                                             ],
                                                             onRideSelect,
                                                             onConfirmRide
@@ -51,6 +51,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     const [isExpanded, setIsExpanded] = useState(false);
     const [isScrollEnabled, setIsScrollEnabled] = useState(true);
     const [selectedRide, setSelectedRide] = useState<RideOption | null>(null);
+    const [customPrices, setCustomPrices] = useState<{[key: number]: string}>({});
 
     // Shared value for grabbing animation
     const translateY = useSharedValue(MIN_TRANSLATE_Y);
@@ -82,7 +83,34 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
 
     const handleRidePress = (ride: RideOption) => {
         setSelectedRide(ride);
-        onRideSelect?.(ride);
+        const customPrice = customPrices[ride.id] || '';
+        onRideSelect?.(ride, customPrice);
+    };
+
+    const handlePriceChange = (rideId: number, price: string) => {
+        // Only allow numbers, dots, and dollar signs
+        const cleanPrice = price.replace(/[^0-9.$]/g, '');
+        setCustomPrices(prev => ({
+            ...prev,
+            [rideId]: cleanPrice
+        }));
+
+        // If this ride is selected, update the parent
+        if (selectedRide?.id === rideId) {
+            onRideSelect?.(selectedRide, cleanPrice);
+        }
+    };
+
+    const handleSuggestionPress = (rideId: number, suggestedRange: string) => {
+        // Extract middle value from range like "$8-12" -> "$10"
+        const numbers = suggestedRange.match(/\d+/g);
+        if (numbers && numbers.length >= 2) {
+            const min = parseInt(numbers[0]);
+            const max = parseInt(numbers[1]);
+            const middle = Math.round((min + max) / 2);
+            const middlePrice = `$${middle}`;
+            handlePriceChange(rideId, middlePrice);
+        }
     };
 
     const handleConfirmPress = () => {
@@ -200,7 +228,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                 </View>
             </View>
 
-            {/* Ride Options (always rendered when expanded, no complex animations) */}
+            {/* Ride Options */}
             {isExpanded && (
                 <View style={{ flex: 1 }}>
                     <ScrollView
@@ -216,11 +244,11 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                             </TouchableOpacity>
                         </View>
 
-                        <View className="gap-3">
+                        <View className="gap-4">
                             {rideOptions.map((option) => (
                                 <TouchableOpacity
                                     key={option.id}
-                                    className={`flex-row items-center justify-between p-4 rounded-xl border ${
+                                    className={`p-4 rounded-xl border ${
                                         selectedRide?.id === option.id
                                             ? 'bg-blue-50 border-blue-500'
                                             : 'bg-gray-50 border-gray-200'
@@ -228,19 +256,45 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                                     onPress={() => handleRidePress(option)}
                                     activeOpacity={0.7}
                                 >
-                                    <View className="flex-row items-center gap-3">
-                                        <Text className="text-2xl">{option.icon}</Text>
-                                        <View>
-                                            <Text className="font-semibold text-gray-800">{option.type}</Text>
-                                            <Text className="text-sm text-gray-500">{option.time} away</Text>
+                                    {/* Top Row: Car info and selection indicator */}
+                                    <View className="flex-row items-center justify-between mb-3">
+                                        <View className="flex-row items-center gap-3">
+                                            <Text className="text-2xl">{option.icon}</Text>
+                                            <View>
+                                                <Text className="font-semibold text-gray-800">{option.type}</Text>
+                                                <Text className="text-sm text-gray-500">{option.time} away</Text>
+                                            </View>
                                         </View>
-                                    </View>
-                                    <View className="items-end">
-                                        <Text className="font-bold text-gray-800 text-lg">{option.price}</Text>
-                                        <Text className="text-xs text-gray-500">recommended price range</Text>
                                         {selectedRide?.id === option.id && (
-                                            <Ionicons name="checkmark-circle" size={20} color="#3B82F6" style={{ marginTop: 2 }} />
+                                            <Ionicons name="checkmark-circle" size={24} color="#3B82F6" />
                                         )}
+                                    </View>
+
+                                    {/* Price Input Row */}
+                                    <View className="flex-row items-center gap-3">
+                                        <View className="flex-1">
+                                            <Text className="text-sm text-gray-600 mb-2">Your price offer:</Text>
+                                            <TextInput
+                                                className="p-3 bg-white border border-gray-300 rounded-lg text-lg font-semibold text-gray-800"
+                                                placeholder="$0"
+                                                value={customPrices[option.id] || ''}
+                                                onChangeText={(text) => handlePriceChange(option.id, text)}
+                                                keyboardType="numeric"
+                                                placeholderTextColor="#9CA3AF"
+                                                onFocus={(e) => e.stopPropagation()}
+                                            />
+                                        </View>
+
+                                        {/* Suggestion */}
+                                        <View className="items-center">
+                                            <Text className="text-xs text-gray-500 mb-1">suggested</Text>
+                                            <TouchableOpacity
+                                                className="px-3 py-2 bg-green-100 rounded-lg border border-green-300"
+                                                onPress={() => handleSuggestionPress(option.id, option.suggestedRange)}
+                                            >
+                                                <Text className="text-green-700 font-medium text-sm">{option.suggestedRange}</Text>
+                                            </TouchableOpacity>
+                                        </View>
                                     </View>
                                 </TouchableOpacity>
                             ))}

@@ -4,10 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9d9da520-e21e-480b-b7dd-86b0e0d98276" name="Changes" comment="init">
+    <list default="true" id="9d9da520-e21e-480b-b7dd-86b0e0d98276" name="Changes" comment="removed logo">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(auth)/login.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(auth)/login.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/(auth)/otp.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(auth)/otp.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/BottomSheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BottomSheet.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -39,6 +37,19 @@
     </option>
   </component>
   <component name="TaskManager">
+    <task id="LOCAL-00001" summary="removed logo">
+      <option name="closed" value="true" />
+      <created>1751391218681</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1751391218681</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="removed logo" />
+    <option name="LAST_COMMIT_MESSAGE" value="removed logo" />
   </component>
 </project>
