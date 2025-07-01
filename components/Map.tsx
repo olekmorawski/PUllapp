@@ -2,7 +2,7 @@ import React from "react";
 import MapView, { PROVIDER_GOOGLE } from "react-native-maps";
 
 interface Props {
-    mapRef: React.RefObject<MapView>;
+    mapRef: React.RefObject<MapView | null>;
     initialRegion?: {
         latitude: number;
         longitude: number;
