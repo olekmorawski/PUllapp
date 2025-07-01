@@ -19,11 +19,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuPress, onNotificationPress
                     <Ionicons name="menu-outline" size={20} color="#374151" />
                 </TouchableOpacity>
 
-                {/* Logo */}
-                <View className="bg-white px-4 py-2 rounded-full shadow-sm">
-                    <Text className="text-lg font-bold text-blue-600">RideApp</Text>
-                </View>
-
                 {/* Notifications */}
                 <TouchableOpacity
                     className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm relative"
