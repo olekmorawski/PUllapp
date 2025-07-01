@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import StyledButton from '@/components/StyledButton';
+import { useAuthContext } from '../../context/AuthContext'; // Import useAuthContext
 
 interface SettingsItemProps {
   label: string;
@@ -27,8 +28,8 @@ const SettingsItem: React.FC<SettingsItemProps> = ({
   <TouchableOpacity
     onPress={onPress}
     className="bg-white p-4 flex-row items-center justify-between border-b border-gray-200"
-    disabled={!onPress && !isSwitch} // Keep disabled logic
-    activeOpacity={onPress ? 0.2 : 1} // Standard activeOpacity or none if not pressable
+    disabled={!onPress && !isSwitch}
+    activeOpacity={onPress ? 0.2 : 1}
   >
     <View className="flex-row items-center">
       <Ionicons name={icon} size={22} color="#4B5563" className="mr-4" />
@@ -40,10 +41,8 @@ const SettingsItem: React.FC<SettingsItemProps> = ({
         onValueChange={onSwitchChange}
         trackColor={{false: '#E5E7EB', true: '#3B82F6'}}
         thumbColor={switchValue ? '#FFFFFF' : '#F3F4F6'}
-        // Tailwind classes are not directly applicable to Switch component in this way
-        // For more advanced styling of Switch, platform-specific code or a custom component might be needed
       />
-    ) : !hideArrow && onPress ? ( // Only show arrow if it's pressable and not hidden
+    ) : !hideArrow && onPress ? (
       <Ionicons name="chevron-forward-outline" size={22} color="#9CA3AF" />
     ) : null}
   </TouchableOpacity>
@@ -51,6 +50,7 @@ const SettingsItem: React.FC<SettingsItemProps> = ({
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { setIsAuthenticated } = useAuthContext(); // Get setIsAuthenticated from context
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
   const [darkModeEnabled, setDarkModeEnabled] = React.useState(false);
 
@@ -63,7 +63,8 @@ export default function SettingsScreen() {
         {
           text: "Log Out",
           onPress: () => {
-            console.log('User logged out');
+            console.log('User logging out...');
+            setIsAuthenticated(false); // Set isAuthenticated to false
             router.replace('/(auth)/login');
           },
           style: "destructive"
@@ -119,7 +120,7 @@ export default function SettingsScreen() {
             title="Log Out"
             onPress={handleLogout}
             variant="secondary"
-            className="bg-red-100 border-red-300" // More direct Tailwind for logout button
+            className="bg-red-100 border-red-300"
             textClassName="text-red-700"
           />
         </View>

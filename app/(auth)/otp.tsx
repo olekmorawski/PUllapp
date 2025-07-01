@@ -3,6 +3,7 @@ import { View, Text, TextInput, Alert, KeyboardAvoidingView, Platform, Pressable
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import StyledButton from '@/components/StyledButton';
+import { useAuthContext } from '../../context/AuthContext'; // Import useAuthContext
 
 const OTP_LENGTH = 6;
 
@@ -10,6 +11,7 @@ export default function OTPScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { email } = params;
+  const { setIsAuthenticated } = useAuthContext(); // Get setIsAuthenticated from context
 
   const [otp, setOtp] = useState<string[]>(new Array(OTP_LENGTH).fill(''));
   const [otpError, setOtpError] = useState('');
@@ -49,7 +51,10 @@ export default function OTPScreen() {
 
     if (enteredOtp === MOCK_OTP) {
       Alert.alert('OTP Verified', 'Login Successful!');
-      // TODO: Update actual authentication state here.
+      setIsAuthenticated(true); // Set isAuthenticated to true
+      // Navigation to '/(tabs)' will be handled by the useEffect in RootLayout
+      // due to isAuthenticated changing. We can still call replace here as a direct action,
+      // or rely on the automatic redirection. For clarity, explicitly navigating is fine.
       router.replace('/(tabs)');
     } else {
       setOtpError('Invalid OTP. Please try again.');
@@ -99,7 +104,7 @@ export default function OTPScreen() {
             title="Confirm OTP"
             onPress={handleConfirmOTP}
             variant="primary"
-            className="w-full max-w-[320px]" // Applied max-width using className
+            className="w-full max-w-[320px]"
           />
 
           <Pressable onPress={handleResendOtp} className="mt-6">
