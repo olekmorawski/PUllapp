@@ -70,11 +70,11 @@ export default function RideAppInterface() {
                 onNotificationPress={handleNotificationPress}
             />
 
-            {/*<Map*/}
-            {/*    mapRef={mapRef}*/}
-            {/*    initialRegion={initialRegion}*/}
-            {/*    className="flex-1"*/}
-            {/*/>*/}
+            <Map
+                mapRef={mapRef}
+                initialRegion={initialRegion}
+                className="flex-1"
+            />
 
             <BottomSheet
                 onRideSelect={handleRideSelect}
