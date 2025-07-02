@@ -8,6 +8,7 @@ import { BottomSheet } from "@/components/BottomSheet";
 import { MapboxMap } from "@/components/MapboxMap";
 import { DirectionsService } from '@/components/DirectionsService';
 import { LocationService } from '@/components/LocationService';
+import {MapView} from "@rnmapbox/maps";
 
 interface LocationData {
     coordinates: {

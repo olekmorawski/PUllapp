@@ -19,8 +19,8 @@ interface RouteResult {
 
 export class DirectionsService {
     async getDirections(
-        origin: {latitude: number; longitude: number},
-        destination: {latitude: number; longitude: number},
+        origin: { latitude: number; longitude: number },
+        destination: { latitude: number; longitude: number },
         options: RouteOptions = {}
     ): Promise<RouteResult> {
         try {
@@ -31,13 +31,12 @@ export class DirectionsService {
             const params = new URLSearchParams({
                 access_token: MAPBOX_ACCESS_TOKEN,
                 geometries: 'geojson',
-                steps: 'true',
-                overview: 'full',
-                alternatives: options.alternatives ? 'true' : 'false',
-                ...options
+                steps: options.steps ? 'true' : 'false',
+                overview: options.overview || 'full',
+                alternatives: options.alternatives ? 'true' : 'false'
             });
 
-            const response = await fetch(`${url}?${params}`);
+            const response = await fetch(`${url}?${params.toString()}`);
             const data = await response.json();
 
             if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
@@ -47,7 +46,7 @@ export class DirectionsService {
             const route = data.routes[0];
             const coordinates = route.geometry.coordinates.map((coord: [number, number]) => ({
                 latitude: coord[1],
-                longitude: coord[0]
+                longitude: coord[0],
             }));
 
             return {
@@ -59,9 +58,9 @@ export class DirectionsService {
                 geoJSON: {
                     type: 'Feature',
                     properties: {},
-                    geometry: route.geometry
+                    geometry: route.geometry,
                 },
-                steps: route.legs?.[0]?.steps
+                steps: route.legs?.[0]?.steps,
             };
         } catch (error: any) {
             console.error('Directions API Error:', error);

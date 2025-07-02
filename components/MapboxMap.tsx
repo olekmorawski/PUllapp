@@ -1,12 +1,11 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import Mapbox, { Camera, MapView, PointAnnotation, ShapeSource, LineLayer } from '@rnmapbox/maps';
-import { MAPBOX_ACCESS_TOKEN } from '../constants/Tokens';
+import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
 import * as Location from 'expo-location';
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
-// Helper to convert latitude/longitude delta to zoom level
 const deltaToZoom = (latitudeDelta: number) => {
     return Math.round(Math.log2(360 / latitudeDelta));
 };
@@ -49,7 +48,7 @@ export const MapboxMap: React.FC<Props> = ({
             try {
                 if (origin && destination) {
                     // Fit to both origin and destination
-                    await cameraRef.current?.fitBounds(
+                    cameraRef.current?.fitBounds(
                         [origin.longitude, origin.latitude],
                         [destination.longitude, destination.latitude],
                         [50, 50, 50, 50],
@@ -57,14 +56,14 @@ export const MapboxMap: React.FC<Props> = ({
                     );
                 } else if (origin) {
                     // Center on origin
-                    await cameraRef.current?.setCamera({
+                    cameraRef.current?.setCamera({
                         centerCoordinate: [origin.longitude, origin.latitude],
                         zoomLevel: 14,
                         animationDuration: 1000
                     });
                 } else if (initialRegion) {
                     // Use initial region
-                    await cameraRef.current?.setCamera({
+                    cameraRef.current?.setCamera({
                         centerCoordinate: [initialRegion.longitude, initialRegion.latitude],
                         zoomLevel: deltaToZoom(initialRegion.latitudeDelta),
                         animationDuration: 1000
