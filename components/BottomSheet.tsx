@@ -1,14 +1,10 @@
 import React, { useRef, useState } from 'react';
 import {
     View,
-    Text,
-    TextInput,
-    TouchableOpacity,
     Dimensions,
     PanResponder,
     ScrollView
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import Animated, {
     useAnimatedStyle,
     withSpring,
@@ -16,9 +12,12 @@ import Animated, {
     interpolate,
     Extrapolation,
 } from "react-native-reanimated";
+import { BottomSheetHeader } from './BottomSheetHeader';
+import { RideOptionsList } from './RideOptionList'; // Fixed import name
+import { ConfirmButton } from './ConfirmButton';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const MAX_TRANSLATE_Y = -SCREEN_HEIGHT + 380; // Almost full screen
+const MAX_TRANSLATE_Y = -SCREEN_HEIGHT + 380; // Keep original constraint
 const MIN_TRANSLATE_Y = -200; // Collapsed state
 
 const AnimatedView = Animated.createAnimatedComponent(View);
@@ -119,19 +118,25 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         }
     };
 
-    // Pan responder for grabbable header
+    // Pan responder for grabbable header ONLY
     const headerPanResponder = React.useMemo(
         () =>
             PanResponder.create({
                 onStartShouldSetPanResponder: () => true,
                 onMoveShouldSetPanResponder: (_, gestureState) => {
-                    return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) + 10;
+                    // Only respond to vertical gestures and only in the header area
+                    return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) + 15;
                 },
                 onPanResponderGrant: (_, gestureState) => {
                     startY.current = translateY.value;
-                    setIsScrollEnabled(false);
+                    // Don't disable scroll here - only disable if we're actually dragging
                 },
                 onPanResponderMove: (_, gestureState) => {
+                    // Only disable scroll if we're moving significantly
+                    if (Math.abs(gestureState.dy) > 10) {
+                        setIsScrollEnabled(false);
+                    }
+
                     const newValue = startY.current + gestureState.dy;
                     translateY.value = Math.max(
                         Math.min(newValue, MIN_TRANSLATE_Y),
@@ -170,8 +175,6 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         };
     });
 
-    const isConfirmEnabled = currentLocation.trim() && destination.trim() && selectedRide;
-
     return (
         <AnimatedView
             style={[
@@ -191,133 +194,50 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                 }
             ]}
         >
-            {/* Grabbable Header */}
-            <View {...headerPanResponder.panHandlers}>
-                <View className="w-full items-center pt-4">
-                    {/* Grabber Handle */}
-                    <View className="w-12 h-1 bg-gray-300 rounded-full mb-4" />
-                </View>
+            {/* Header with pan handlers only on the header area */}
+            <BottomSheetHeader
+                panHandlers={headerPanResponder.panHandlers}
+                currentLocation={currentLocation}
+                destination={destination}
+                onCurrentLocationChange={setCurrentLocation}
+                onDestinationChange={setDestination}
+                onCurrentLocationFocus={handleCurrentLocationFocus}
+                onDestinationFocus={handleDestinationFocus}
+            />
 
-                {/* Inputs Section */}
-                <View className="px-6 gap-4">
-                    {/* Current Location */}
-                    <View className="flex-row items-center gap-3">
-                        <View className="w-3 h-3 bg-green-500 rounded-full" />
-                        <TextInput
-                            className="flex-1 p-4 bg-gray-50 rounded-xl text-gray-800"
-                            placeholder="Current location"
-                            value={currentLocation}
-                            onChangeText={setCurrentLocation}
-                            onFocus={handleCurrentLocationFocus}
-                            placeholderTextColor="#9CA3AF"
-                        />
-                    </View>
-
-                    {/* Destination */}
-                    <View className="flex-row items-center gap-3 mb-4">
-                        <View className="w-3 h-3 bg-red-500 rounded-full" />
-                        <TextInput
-                            className="flex-1 p-4 bg-gray-50 rounded-xl text-gray-800"
-                            placeholder="Where to?"
-                            value={destination}
-                            onChangeText={setDestination}
-                            onFocus={handleDestinationFocus}
-                            placeholderTextColor="#9CA3AF"
-                        />
-                    </View>
-                </View>
-            </View>
-
-            {/* Ride Options */}
+            {/* Scrollable content area - natural flow, button at bottom */}
             {isExpanded && (
-                <View style={{ flex: 1 }}>
-                    <ScrollView
-                        className="flex-1 px-6"
-                        scrollEnabled={isScrollEnabled}
-                        showsVerticalScrollIndicator={false}
-                        contentContainerStyle={{ paddingBottom: 20 }}
-                    >
-                        <View className="flex-row items-center justify-between mb-4">
-                            <Text className="text-lg font-semibold text-gray-800">Choose a ride</Text>
-                        </View>
+                <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{
+                        paddingHorizontal: 24,
+                        paddingTop: 8,
+                    }}
+                    scrollEnabled={isScrollEnabled}
+                    showsVerticalScrollIndicator={true}
+                    bounces={true}
+                    scrollEventThrottle={16}
+                    nestedScrollEnabled={true}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <RideOptionsList
+                        rideOptions={rideOptions}
+                        selectedRide={selectedRide}
+                        customPrices={customPrices}
+                        onRidePress={handleRidePress}
+                        onPriceChange={handlePriceChange}
+                        onSuggestionPress={handleSuggestionPress}
+                    />
 
-                        <View className="gap-4">
-                            {rideOptions.map((option) => (
-                                <TouchableOpacity
-                                    key={option.id}
-                                    className={`p-4 rounded-xl border ${
-                                        selectedRide?.id === option.id
-                                            ? 'bg-blue-50 border-blue-500'
-                                            : 'bg-gray-50 border-gray-200'
-                                    }`}
-                                    onPress={() => handleRidePress(option)}
-                                    activeOpacity={0.7}
-                                >
-                                    {/* Top Row: Car info and selection indicator */}
-                                    <View className="flex-row items-center justify-between mb-3">
-                                        <View className="flex-row items-center gap-3">
-                                            <Text className="text-2xl">{option.icon}</Text>
-                                            <View>
-                                                <Text className="font-semibold text-gray-800">{option.type}</Text>
-                                                <Text className="text-sm text-gray-500">{option.time} away</Text>
-                                            </View>
-                                        </View>
-                                        {selectedRide?.id === option.id && (
-                                            <Ionicons name="checkmark-circle" size={24} color="#3B82F6" />
-                                        )}
-                                    </View>
-
-                                    {/* Price Input Row */}
-                                    <View className="flex-row items-center gap-3">
-                                        <View className="flex-1">
-                                            <Text className="text-sm text-gray-600 mb-2">Your price offer:</Text>
-                                            <TextInput
-                                                className="p-3 bg-white border border-gray-300 rounded-lg text-lg font-semibold text-gray-800"
-                                                placeholder="$0"
-                                                value={customPrices[option.id] || ''}
-                                                onChangeText={(text) => handlePriceChange(option.id, text)}
-                                                keyboardType="numeric"
-                                                placeholderTextColor="#9CA3AF"
-                                                onFocus={(e) => e.stopPropagation()}
-                                            />
-                                        </View>
-
-                                        {/* Suggestion */}
-                                        <View className="items-center">
-                                            <Text className="text-xs text-gray-500 mb-1">suggested</Text>
-                                            <TouchableOpacity
-                                                className="px-3 py-2 bg-green-100 rounded-lg border border-green-300"
-                                                onPress={() => handleSuggestionPress(option.id, option.suggestedRange)}
-                                            >
-                                                <Text className="text-green-700 font-medium text-sm">{option.suggestedRange}</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    </View>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-
-                        <TouchableOpacity
-                            className={`mt-6 py-4 rounded-xl ${
-                                isConfirmEnabled
-                                    ? 'bg-blue-600 active:bg-blue-700'
-                                    : 'bg-gray-300'
-                            }`}
-                            onPress={handleConfirmPress}
-                            disabled={!isConfirmEnabled}
-                            activeOpacity={isConfirmEnabled ? 0.8 : 1}
-                        >
-                            <Text className={`text-center font-semibold text-lg ${
-                                isConfirmEnabled ? 'text-white' : 'text-gray-500'
-                            }`}>
-                                {isConfirmEnabled
-                                    ? 'Pull Up'
-                                    : 'Select ride & fill locations'
-                                }
-                            </Text>
-                        </TouchableOpacity>
-                    </ScrollView>
-                </View>
+                    <ConfirmButton
+                        isEnabled={Boolean(
+                            currentLocation.trim() &&
+                            destination.trim() &&
+                            selectedRide
+                        )}
+                        onPress={handleConfirmPress}
+                    />
+                </ScrollView>
             )}
         </AnimatedView>
     );
