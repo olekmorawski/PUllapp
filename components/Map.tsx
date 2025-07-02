@@ -160,7 +160,7 @@ export const Map = ({
         <MapboxGL.MapView
             ref={mapRef}
             styleURL={MapboxGL.StyleURL.Street} // Or your custom style
-            style={className ? { flex: 1, width: '100%', height: '100%' } : { flex: 1 }} // Apply className as style
+            style={{ flex: 1 }} // Ensure the map takes available space
             // Removed unsupported props like showsTraffic, loadingEnabled directly
             // Compass is usually part of the map style or can be added with Ornament
             // MyLocationButton needs to be custom or handled by UserLocation component

@@ -295,7 +295,7 @@ export class DirectionsService {
 
             const params = new URLSearchParams({
                 access_token: this.mapboxAccessToken,
-                profile_type: profile, // Renamed from 'mode' for clarity with Mapbox
+                // profile_type: profile, // Profile is in the URL path, not a query param
                 geometries: 'geojson', // Get coordinates in geojson format
                 overview: 'full', // Get full overview geometry
                 steps: 'true', // Get step-by-step instructions
