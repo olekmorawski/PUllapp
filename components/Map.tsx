@@ -185,10 +185,10 @@ export const Map = ({
             {/* Origin Marker */}
             {origin && (
                 <MapboxGL.PointAnnotation
-                    id="origin"
+                    id="origin-annotation" // Unique ID
                     coordinate={[origin.longitude, origin.latitude]}
                     title="Pickup Location"
-                    onSelected={(feature) => handleMarkerPress("origin", feature)}
+                    onSelected={(feature) => handleMarkerPress("origin-annotation", feature)}
                 >
                     {/* Optional: Custom view for annotation */}
                     {/* <View style={{width: 20, height: 20, backgroundColor: 'green', borderRadius: 10}} /> */}
@@ -198,10 +198,10 @@ export const Map = ({
             {/* Destination Marker */}
             {destination && (
                 <MapboxGL.PointAnnotation
-                    id="destination"
+                    id="destination-annotation" // Unique ID
                     coordinate={[destination.longitude, destination.latitude]}
                     title="Destination"
-                    onSelected={(feature) => handleMarkerPress("destination", feature)}
+                    onSelected={(feature) => handleMarkerPress("destination-annotation", feature)}
                 >
                     {/* Optional: Custom view for annotation */}
                     {/* <View style={{width: 20, height: 20, backgroundColor: 'red', borderRadius: 10}} /> */}
