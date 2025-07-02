@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import MapView, { PROVIDER_DEFAULT, Marker, Polyline } from "react-native-maps";
+import MapView, { PROVIDER_GOOGLE, Marker, Polyline } from "react-native-maps";
 import * as Location from 'expo-location';
 
 interface Props {
@@ -112,7 +112,7 @@ export const Map = ({
             showsCompass={true}
             loadingEnabled={true}
             initialRegion={initialRegion}
-            provider={PROVIDER_DEFAULT}
+            provider={PROVIDER_GOOGLE}
             style={{ flex: 1 }}
             showsTraffic={true}
             pitchEnabled={true}

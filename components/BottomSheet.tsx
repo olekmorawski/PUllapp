@@ -17,10 +17,9 @@ import Animated, {
     interpolate,
     Extrapolation,
 } from "react-native-reanimated";
-import { BottomSheetHeader } from './BottomSheetHeader';
 import { RideOptionsList } from './RideOptionList';
 import { ConfirmButton } from './ConfirmButton';
-import {placesService, locationService} from "@/components/LocationService";
+import { placesService, LocationService } from './LocationService';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MAX_TRANSLATE_Y = -SCREEN_HEIGHT + 380;
@@ -51,6 +50,7 @@ interface BottomSheetProps {
     onConfirmRide?: () => void;
     onLocationSelect?: (type: 'origin' | 'destination', location: any) => void;
     userLocation?: any;
+    onSearchError?: (error: Error) => void; // Fixed: added proper type
 }
 
 export const BottomSheet: React.FC<BottomSheetProps> = ({
@@ -62,10 +62,12 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                                                             onRideSelect,
                                                             onConfirmRide,
                                                             onLocationSelect,
-                                                            userLocation
+                                                            userLocation,
+                                                            onSearchError // Fixed: properly typed prop
                                                         }) => {
     const [currentLocation, setCurrentLocation] = useState('');
     const [destination, setDestination] = useState('');
+    const [searchError, setSearchError] = useState<string | null>(null);
     const [isExpanded, setIsExpanded] = useState(false);
     const [isScrollEnabled, setIsScrollEnabled] = useState(true);
     const [selectedRide, setSelectedRide] = useState<RideOption | null>(null);
@@ -81,7 +83,9 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
 
     const translateY = useSharedValue(MIN_TRANSLATE_Y);
     const startY = useRef(0);
-    const searchTimeout = useRef<NodeJS.Timeout>();
+
+    // Fixed: Use number instead of NodeJS.Timeout for React Native
+    const searchTimeout = useRef<number>();
 
     // Auto-populate current location on mount
     useEffect(() => {
@@ -103,10 +107,11 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     const performSearch = useCallback(async (query: string, type: 'origin' | 'destination') => {
         if (query.length < 2) {
             setSearchResults([]);
+            setSearchError(null);
             return;
         }
-
         setIsSearching(true);
+        setSearchError(null);
 
         try {
             const results = await placesService.searchPlaces(query, {
@@ -117,13 +122,28 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
             });
 
             setSearchResults(results);
-        } catch (error) {
-            console.error('Search error:', error);
+            if (results.length === 0 && query.length >= 2) {
+                setSearchError("No places found matching your search.");
+            }
+        } catch (error: any) {
+            console.error('Search error in BottomSheet:', error);
+            let friendlyMessage = "Could not perform search. Please try again.";
+            if (error.message) {
+                if (error.message.includes('ZERO_RESULTS') || error.message.includes('No places found')) {
+                    friendlyMessage = "No places found matching your search.";
+                } else if (error.message.toLowerCase().includes('network') || error.message.includes('Failed to fetch')) {
+                    friendlyMessage = "Network error during search. Please check your connection.";
+                } else if (error.message.startsWith('Places API Error:')) {
+                    friendlyMessage = `Search error: ${error.message.replace('Places API Error: ', '')}.`;
+                }
+            }
+            setSearchError(friendlyMessage);
             setSearchResults([]);
+            onSearchError?.(error);
         } finally {
             setIsSearching(false);
         }
-    }, [userLocation]);
+    }, [userLocation, onSearchError]);
 
     // Handle search input changes with debouncing
     const handleSearchInputChange = useCallback((text: string, type: 'origin' | 'destination') => {
@@ -140,8 +160,8 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
             clearTimeout(searchTimeout.current);
         }
 
-        // Set new timeout for search
-        searchTimeout.current = setTimeout(() => {
+        // Fixed: Use window.setTimeout for React Native
+        searchTimeout.current = window.setTimeout(() => {
             performSearch(text, type);
         }, 300);
     }, [performSearch]);
@@ -186,7 +206,8 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     // Use current location for origin
     const handleUseCurrentLocation = useCallback(async () => {
         try {
-            const location = await locationService.getCurrentLocationWithFallback();
+            // Fixed: Use LocationService class method
+            const location = await LocationService.getCurrentLocationWithFallback();
             const address = `Current Location (${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)})`;
 
             const locationData = {
@@ -206,6 +227,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
             setActiveSearchType(null);
         } catch (error) {
             console.error('Error getting current location:', error);
+            setSearchError('Could not get current location. Please try again.');
         }
     }, [onLocationSelect]);
 
@@ -225,14 +247,16 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         });
         setActiveSearchType(null);
         setSearchResults([]);
+        setSearchError(null); // Clear error when collapsing
     };
 
     const handleLocationInputFocus = (type: 'origin' | 'destination') => {
         setActiveSearchType(type);
         expandSheet();
 
-        // Clear previous search results
+        // Clear previous search results and errors
         setSearchResults([]);
+        setSearchError(null);
 
         // Trigger search with current input
         const currentText = type === 'origin' ? currentLocation : destination;
@@ -329,7 +353,28 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     });
 
     const renderSearchResults = () => {
-        if (!activeSearchType || searchResults.length === 0) {
+        if (!activeSearchType) {
+            return null;
+        }
+
+        // Show error message if there's an error and no results
+        if (searchError && !isSearching && searchResults.length === 0) {
+            return (
+                <View style={{
+                    backgroundColor: 'white',
+                    marginTop: 8,
+                    padding: 16,
+                    alignItems: 'center'
+                }}>
+                    <Text style={{ color: '#FF4444', fontSize: 14, textAlign: 'center' }}>
+                        {searchError}
+                    </Text>
+                </View>
+            );
+        }
+
+        // Don't render if no results and no error
+        if (searchResults.length === 0) {
             return null;
         }
 
@@ -490,6 +535,9 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                 {isSearching && (
                     <View style={{ alignItems: 'center', paddingVertical: 8 }}>
                         <ActivityIndicator size="small" color="#007AFF" />
+                        <Text style={{ marginTop: 4, color: '#666', fontSize: 12 }}>
+                            Searching...
+                        </Text>
                     </View>
                 )}
             </View>
