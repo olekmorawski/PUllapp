@@ -17,7 +17,6 @@ import Animated, {
     interpolate,
     Extrapolation,
 } from "react-native-reanimated";
-import { BottomSheetHeader } from './BottomSheetHeader';
 import { RideOptionsList } from './RideOptionList';
 import { ConfirmButton } from './ConfirmButton';
 import {placesService, locationService} from "@/components/LocationService";
@@ -110,16 +109,6 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         }
         setIsSearching(true);
         setSearchError(null);
-
-        // Placeholder for network check
-        // const isConnected = await NetInfo.fetch().then(state => state.isConnected);
-        // if (!isConnected) {
-        //     setSearchError("No internet connection. Please check your network.");
-        //     setIsSearching(false);
-        //     setSearchResults([]);
-        //     onSearchError?.(new Error("No internet connection"));
-        //     return;
-        // }
 
         try {
             const results = await placesService.searchPlaces(query, {

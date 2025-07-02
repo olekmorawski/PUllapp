@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { StatusBar, Alert, View, Text, ActivityIndicator } from 'react-native';
+import { StatusBar, Alert, View, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView from 'react-native-maps';
 import { useRouter } from 'expo-router';
-// import NetInfo from '@react-native-community/netinfo'; // For actual network check
-
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { BottomSheet } from "@/components/BottomSheet";
@@ -38,8 +36,8 @@ export default function RideAppInterface() {
     const router = useRouter();
     const directionsService = new DirectionsService();
 
-    // Default region (San Francisco)
-    const initialRegion = {
+    // Default static region (San Francisco) - Renamed for clarity
+    const initialStaticRegion = {
         latitude: 37.78825,
         longitude: -122.4324,
         latitudeDelta: 0.0922,
@@ -303,6 +301,26 @@ export default function RideAppInterface() {
         router.push('/(tabs)/profile');
         setIsSidebarVisible(false);
     };
+
+    const getMapInitialRegion = () => {
+        if (
+            userLocation &&
+            userLocation.coords &&
+            typeof userLocation.coords.latitude === 'number' &&
+            !isNaN(userLocation.coords.latitude) &&
+            typeof userLocation.coords.longitude === 'number' &&
+            !isNaN(userLocation.coords.longitude)
+        ) {
+            return {
+                latitude: userLocation.coords.latitude,
+                longitude: userLocation.coords.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+            };
+        }
+        // Fallback to the static initial region if userLocation is not valid
+        return initialStaticRegion;
+    };
     const handleHistoryPress = () => {
         router.push('/(tabs)/history');
         setIsSidebarVisible(false);
@@ -333,15 +351,22 @@ export default function RideAppInterface() {
             {/* Enhanced Map with Route Display */}
             <Map
                 mapRef={mapRef}
-                initialRegion={userLocation ? {
-                    latitude: userLocation.coords.latitude,
-                    longitude: userLocation.coords.longitude,
-                    latitudeDelta: 0.01,
-                    longitudeDelta: 0.01,
-                } : initialRegion}
+                initialRegion={getMapInitialRegion()}
                 className="flex-1"
-                origin={origin?.coordinates}
-                destination={destination?.coordinates}
+                origin={
+                    origin?.coordinates &&
+                    typeof origin.coordinates.latitude === 'number' && !isNaN(origin.coordinates.latitude) &&
+                    typeof origin.coordinates.longitude === 'number' && !isNaN(origin.coordinates.longitude)
+                        ? origin.coordinates
+                        : undefined
+                }
+                destination={
+                    destination?.coordinates &&
+                    typeof destination.coordinates.latitude === 'number' && !isNaN(destination.coordinates.latitude) &&
+                    typeof destination.coordinates.longitude === 'number' && !isNaN(destination.coordinates.longitude)
+                        ? destination.coordinates
+                        : undefined
+                }
                 routeCoordinates={routeCoordinates}
                 onLocationUpdate={handleLocationUpdate}
                 showUserLocation={true}

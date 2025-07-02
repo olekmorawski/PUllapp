@@ -1,8 +1,7 @@
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Configuration - Replace with your actual API keys
-const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
+const GOOGLE_MAPS_API_KEY = 'AIzaSyAwrnA0SWKH89KLa-v2RGfEx7akD8nX48c';
 const MAPBOX_ACCESS_TOKEN = 'YOUR_MAPBOX_ACCESS_TOKEN';
 
 // Location Service for precise geolocation
@@ -36,7 +35,6 @@ export class LocationService {
         try {
             const location = await Location.getCurrentPositionAsync({
                 accuracy: Location.Accuracy.High,
-                timeout: 10000
             });
 
             this.lastKnownLocation = location;
