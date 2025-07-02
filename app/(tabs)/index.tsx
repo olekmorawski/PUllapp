@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { StatusBar, Alert, View, Text } from 'react-native';
+import { StatusBar, Alert, View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView from 'react-native-maps';
 import { useRouter } from 'expo-router';
+// import NetInfo from '@react-native-community/netinfo'; // For actual network check
+
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { BottomSheet } from "@/components/BottomSheet";
 import { Map } from "@/components/Map";
 import {
-    LocationService,
-    DirectionsService,
-    RealTimeTrackingService,
+    LocationService, // Note: locationService instance is used, not the class directly for most operations
+    DirectionsService, // Note: directionsService instance is used
     trackingService
 } from '@/components/LocationService';
 
@@ -73,27 +74,49 @@ export default function RideAppInterface() {
             if (permissions.foreground !== 'granted') {
                 Alert.alert(
                     'Location Permission Required',
-                    'This app needs location access to show your position and calculate routes.',
+                    'This app needs location access to show your position and calculate routes. Please grant permission in your device settings.',
                     [
                         { text: 'Cancel', style: 'cancel' },
                         {
                             text: 'Grant Permission',
-                            onPress: () => initializeLocationServices()
+                            onPress: () => initializeLocationServices() // Or link to settings: Linking.openSettings()
                         }
                     ]
                 );
                 return;
             }
 
+            // const isConnected = await checkNetworkStatus();
+            // if (!isConnected && !LocationService.lastKnownLocation && !await LocationService.getCachedLocation()) {
+            //     Alert.alert(
+            //         'Network & Location Error',
+            //         'No internet connection to verify location and no cached location available. Some features may be limited.',
+            //         [{ text: 'OK' }]
+            //     );
+            //     // Potentially stop here or allow limited functionality
+            // }
+
             // Get initial location
             const location = await LocationService.getCurrentLocationWithFallback();
             setUserLocation(location);
+            // Set current location as origin by default if not already set
+            if (!origin && location) {
+                setOrigin({
+                    coordinates: {
+                        latitude: location.coords.latitude,
+                        longitude: location.coords.longitude,
+                    },
+                    address: `Current Location (${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)})`,
+                    isCurrentLocation: true,
+                });
+            }
+
 
             // Start real-time tracking
-            const unsubscribe = trackingService.subscribe((newLocation) => {
+            trackingService.subscribe((newLocation) => {
                 setUserLocation(newLocation);
 
-                // Update origin if it's set to current location
+                // Update origin if it's set to current location and map marker is also at current
                 if (origin?.isCurrentLocation) {
                     setOrigin({
                         coordinates: {
@@ -107,26 +130,52 @@ export default function RideAppInterface() {
             });
 
             await trackingService.startTracking({
-                accuracy: 'high',
-                timeInterval: 5000, // 5 seconds for demo
-                distanceInterval: 10
+                // accuracy: 'high', // This is default in RealTimeTrackingService
+                // timeInterval: 5000, // This is default baseInterval in RealTimeTrackingService if not overridden
+                distanceInterval: 10 // meters
             });
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to initialize location services:', error);
+            let alertMessage = 'Unable to access your location. Some features may not work properly.';
+            if (error.message) {
+                if (error.message.toLowerCase().includes('permission')) {
+                    alertMessage = 'Location permission is required. Please enable it in your device settings and restart the app.';
+                } else if (error.message.toLowerCase().includes('unable to get location')) {
+                    alertMessage = 'Could not determine your current location. Please ensure GPS is enabled and you have a clear view of the sky, or check network connectivity.';
+                }
+            }
             Alert.alert(
                 'Location Error',
-                'Unable to access your location. Some features may not work properly.',
+                alertMessage,
                 [{ text: 'OK' }]
             );
         }
     };
 
     const calculateRoute = async () => {
-        if (!origin || !destination) return;
+        if (!origin || !destination) {
+            // Clear route if origin or destination is missing
+            setRouteCoordinates([]);
+            setRouteInfo(null);
+            return;
+        }
+
+        // const isConnected = await checkNetworkStatus(); // Placeholder for NetInfo
+        // if (!isConnected) {
+        //     Alert.alert(
+        //         'Network Error',
+        //         'No internet connection. Please check your network settings and try again to calculate the route.',
+        //         [{ text: 'OK' }]
+        //     );
+        //     setIsLoadingRoute(false);
+        //     return;
+        // }
 
         try {
             setIsLoadingRoute(true);
+            setRouteCoordinates([]); // Clear previous route while loading new one
+            setRouteInfo(null);
 
             const routeData = await directionsService.getDirections(
                 origin.coordinates,
@@ -134,7 +183,7 @@ export default function RideAppInterface() {
                 {
                     mode: 'DRIVING',
                     alternatives: false,
-                    avoid: '', // Can be 'tolls', 'highways', 'ferries'
+                    avoid: '',
                     language: 'en'
                 }
             );
@@ -147,16 +196,23 @@ export default function RideAppInterface() {
                 durationValue: routeData.duration
             });
 
-            // Update ride options with estimated time and pricing based on distance
             updateRideEstimates(routeData);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Route calculation failed:', error);
-            Alert.alert(
-                'Route Error',
-                'Unable to calculate route. Please check your internet connection and try again.',
-                [{ text: 'OK' }]
-            );
+            let errorMessage = 'Unable to calculate route. Please try again.';
+            if (error.message) {
+                if (error.message.includes('No route found') || error.message.startsWith('Directions API Error: ZERO_RESULTS')) {
+                    errorMessage = 'No route could be found between the selected locations. Please ensure they are valid and accessible by road.';
+                } else if (error.message.includes('Network request failed') || error.message.toLowerCase().includes('network error')) {
+                    errorMessage = 'A network error occurred while calculating the route. Please check your connection and try again.';
+                } else if (error.message.startsWith('Directions API Error:')) {
+                    errorMessage = `Route calculation error: ${error.message.replace('Directions API Error: ', '')}. Please try again.`;
+                }
+            }
+            Alert.alert('Route Calculation Error', errorMessage, [{ text: 'OK' }]);
+            setRouteCoordinates([]); // Ensure route is cleared on error
+            setRouteInfo(null);
         } finally {
             setIsLoadingRoute(false);
         }

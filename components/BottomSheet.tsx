@@ -62,10 +62,12 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                                                             onRideSelect,
                                                             onConfirmRide,
                                                             onLocationSelect,
-                                                            userLocation
+    userLocation,
+    onSearchError // Added prop for error reporting
                                                         }) => {
     const [currentLocation, setCurrentLocation] = useState('');
     const [destination, setDestination] = useState('');
+    const [searchError, setSearchError] = useState<string | null>(null); // State to hold search error messages
     const [isExpanded, setIsExpanded] = useState(false);
     const [isScrollEnabled, setIsScrollEnabled] = useState(true);
     const [selectedRide, setSelectedRide] = useState<RideOption | null>(null);
@@ -103,27 +105,53 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     const performSearch = useCallback(async (query: string, type: 'origin' | 'destination') => {
         if (query.length < 2) {
             setSearchResults([]);
+            setSearchError(null);
             return;
         }
-
         setIsSearching(true);
+        setSearchError(null);
+
+        // Placeholder for network check
+        // const isConnected = await NetInfo.fetch().then(state => state.isConnected);
+        // if (!isConnected) {
+        //     setSearchError("No internet connection. Please check your network.");
+        //     setIsSearching(false);
+        //     setSearchResults([]);
+        //     onSearchError?.(new Error("No internet connection"));
+        //     return;
+        // }
 
         try {
             const results = await placesService.searchPlaces(query, {
                 location: userLocation?.coords,
-                sessionId: `${type}-${Date.now()}`,
+                sessionId: `${type}-${Date.now()}`, // Session token for Google Places
                 language: 'en',
-                types: 'establishment,address'
+                types: 'establishment,address' // Bias towards addresses and establishments
             });
 
             setSearchResults(results);
-        } catch (error) {
-            console.error('Search error:', error);
+            if (results.length === 0 && query.length >= 2) {
+                setSearchError("No places found matching your search.");
+            }
+        } catch (error: any) {
+            console.error('Search error in BottomSheet:', error);
+            let friendlyMessage = "Could not perform search. Please try again.";
+            if (error.message) {
+                if (error.message.includes('ZERO_RESULTS') || error.message.includes('No places found')) {
+                    friendlyMessage = "No places found matching your search.";
+                } else if (error.message.toLowerCase().includes('network') || error.message.includes('Failed to fetch')) {
+                     friendlyMessage = "Network error during search. Please check your connection.";
+                } else if (error.message.startsWith('Places API Error:')) {
+                    friendlyMessage = `Search error: ${error.message.replace('Places API Error: ', '')}.`;
+                }
+            }
+            setSearchError(friendlyMessage);
             setSearchResults([]);
+            onSearchError?.(error); // Propagate error if needed by parent
         } finally {
             setIsSearching(false);
         }
-    }, [userLocation]);
+    }, [userLocation, onSearchError]);
 
     // Handle search input changes with debouncing
     const handleSearchInputChange = useCallback((text: string, type: 'origin' | 'destination') => {
@@ -492,13 +520,18 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                         <ActivityIndicator size="small" color="#007AFF" />
                     </View>
                 )}
+                 {searchError && !isSearching && activeSearchType && searchResults.length === 0 && (
+                    <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+                        <Text style={{ color: 'red', fontSize: 14 }}>{searchError}</Text>
+                    </View>
+                )}
             </View>
 
             {/* Search Results */}
             {renderSearchResults()}
 
             {/* Ride Options and Confirm Button */}
-            {isExpanded && !activeSearchType && (
+            {isExpanded && !activeSearchType && !searchError && (
                 <ScrollView
                     style={{ flex: 1 }}
                     contentContainerStyle={{
