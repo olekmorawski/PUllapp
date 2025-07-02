@@ -1,15 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { StatusBar, Alert, View, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView from 'react-native-maps';
 import { useRouter } from 'expo-router';
+import MapboxGL from "@rnmapbox/maps"; // Add this import for MapboxGL types
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { BottomSheet } from "@/components/BottomSheet";
 import { Map } from "@/components/Map";
 import {
-    LocationService, // Note: locationService instance is used, not the class directly for most operations
-    DirectionsService, // Note: directionsService instance is used
+    LocationService,
+    DirectionsService,
     trackingService
 } from '@/components/LocationService';
 
@@ -32,9 +32,11 @@ export default function RideAppInterface() {
     const [isLoadingRoute, setIsLoadingRoute] = useState(false);
     const [selectedRide, setSelectedRide] = useState<any>(null);
 
-    const mapRef = useRef<MapView>(null);
     const router = useRouter();
     const directionsService = new DirectionsService();
+
+    // FIXED: Add mapRef declaration
+    const mapRef = useRef<MapboxGL.MapView | null>(null);
 
     // Default static region (San Francisco) - Renamed for clarity
     const initialStaticRegion = {
@@ -77,26 +79,17 @@ export default function RideAppInterface() {
                         { text: 'Cancel', style: 'cancel' },
                         {
                             text: 'Grant Permission',
-                            onPress: () => initializeLocationServices() // Or link to settings: Linking.openSettings()
+                            onPress: () => initializeLocationServices()
                         }
                     ]
                 );
                 return;
             }
 
-            // const isConnected = await checkNetworkStatus();
-            // if (!isConnected && !LocationService.lastKnownLocation && !await LocationService.getCachedLocation()) {
-            //     Alert.alert(
-            //         'Network & Location Error',
-            //         'No internet connection to verify location and no cached location available. Some features may be limited.',
-            //         [{ text: 'OK' }]
-            //     );
-            //     // Potentially stop here or allow limited functionality
-            // }
-
             // Get initial location
             const location = await LocationService.getCurrentLocationWithFallback();
             setUserLocation(location);
+
             // Set current location as origin by default if not already set
             if (!origin && location) {
                 setOrigin({
@@ -108,7 +101,6 @@ export default function RideAppInterface() {
                     isCurrentLocation: true,
                 });
             }
-
 
             // Start real-time tracking
             trackingService.subscribe((newLocation) => {
@@ -128,8 +120,6 @@ export default function RideAppInterface() {
             });
 
             await trackingService.startTracking({
-                // accuracy: 'high', // This is default in RealTimeTrackingService
-                // timeInterval: 5000, // This is default baseInterval in RealTimeTrackingService if not overridden
                 distanceInterval: 10 // meters
             });
 
@@ -153,26 +143,14 @@ export default function RideAppInterface() {
 
     const calculateRoute = async () => {
         if (!origin || !destination) {
-            // Clear route if origin or destination is missing
             setRouteCoordinates([]);
             setRouteInfo(null);
             return;
         }
 
-        // const isConnected = await checkNetworkStatus(); // Placeholder for NetInfo
-        // if (!isConnected) {
-        //     Alert.alert(
-        //         'Network Error',
-        //         'No internet connection. Please check your network settings and try again to calculate the route.',
-        //         [{ text: 'OK' }]
-        //     );
-        //     setIsLoadingRoute(false);
-        //     return;
-        // }
-
         try {
             setIsLoadingRoute(true);
-            setRouteCoordinates([]); // Clear previous route while loading new one
+            setRouteCoordinates([]);
             setRouteInfo(null);
 
             const routeData = await directionsService.getDirections(
@@ -180,7 +158,6 @@ export default function RideAppInterface() {
                 destination.coordinates,
                 {
                     mode: 'DRIVING',
-                    alternatives: false,
                     avoid: '',
                     language: 'en'
                 }
@@ -209,7 +186,7 @@ export default function RideAppInterface() {
                 }
             }
             Alert.alert('Route Calculation Error', errorMessage, [{ text: 'OK' }]);
-            setRouteCoordinates([]); // Ensure route is cleared on error
+            setRouteCoordinates([]);
             setRouteInfo(null);
         } finally {
             setIsLoadingRoute(false);
@@ -218,12 +195,9 @@ export default function RideAppInterface() {
 
     const updateRideEstimates = (routeData: any) => {
         // This would typically call your backend for real pricing
-        // For demo purposes, we'll calculate estimated prices based on distance
         const distanceKm = routeData.distance / 1000;
         const baseFare = 3;
         const perKmRate = 1.5;
-
-        // Update ride options with dynamic pricing (this would be passed to BottomSheet)
         console.log('Updated estimates for', distanceKm, 'km route');
     };
 
@@ -263,12 +237,6 @@ export default function RideAppInterface() {
     }, [origin, destination, selectedRide, routeInfo]);
 
     const processRideConfirmation = () => {
-        // Here you would typically:
-        // 1. Send ride request to your backend
-        // 2. Handle payment processing
-        // 3. Find available drivers
-        // 4. Start real-time ride tracking
-
         console.log('Processing ride confirmation...');
 
         Alert.alert(
@@ -289,8 +257,6 @@ export default function RideAppInterface() {
 
     // Handle location updates for real-time tracking
     const handleLocationUpdate = useCallback((location: any) => {
-        // This callback receives location updates from the Map component
-        // You can use this for additional processing if needed
         console.log('Location updated:', location);
     }, []);
 
@@ -318,21 +284,24 @@ export default function RideAppInterface() {
                 longitudeDelta: 0.01,
             };
         }
-        // Fallback to the static initial region if userLocation is not valid
         return initialStaticRegion;
     };
+
     const handleHistoryPress = () => {
         router.push('/(tabs)/history');
         setIsSidebarVisible(false);
     };
+
     const handlePaymentPress = () => {
         console.log('Navigate to payment');
         setIsSidebarVisible(false);
     };
+
     const handleSettingsPress = () => {
         router.push('/(tabs)/settings');
         setIsSidebarVisible(false);
     };
+
     const handleBecomeDriverPress = () => {
         router.push('/(tabs)/become-driver');
         setIsSidebarVisible(false);

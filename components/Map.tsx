@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { View, Text } from 'react-native';
 import MapboxGL from "@rnmapbox/maps";
 import * as Location from 'expo-location';
-import { MAPBOX_ACCESS_TOKEN } from "../constants/Tokens"; // Assuming you'll store token here
+import { MAPBOX_ACCESS_TOKEN } from "../constants/Tokens";
 
 MapboxGL.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
@@ -11,25 +12,25 @@ const deltaToZoom = (latitudeDelta: number) => {
 };
 
 interface Props {
-    mapRef: React.RefObject<MapboxGL.MapView | null>; // Updated type
-    initialRegion?: { // This will be converted to centerCoordinate and zoomLevel
+    mapRef: React.RefObject<MapboxGL.MapView | null>;
+    initialRegion?: {
         latitude: number;
         longitude: number;
         latitudeDelta: number;
         longitudeDelta: number;
     };
-    className?: string; // Style prop might be more idiomatic for MapboxGL.MapView
+    className?: string;
     origin?: { latitude: number; longitude: number } | null;
     destination?: { latitude: number; longitude: number } | null;
     routeCoordinates?: Array<{ latitude: number; longitude: number }>;
-    onLocationUpdate?: (location: Location.LocationObject) => void; // More specific type
+    onLocationUpdate?: (location: Location.LocationObject) => void;
     showUserLocation?: boolean;
 }
 
 export const Map = ({
                         mapRef,
                         initialRegion,
-                        className, // Consider using `style` prop directly for MapboxGL.MapView
+                        className,
                         origin,
                         destination,
                         routeCoordinates = [],
@@ -37,11 +38,9 @@ export const Map = ({
                         showUserLocation = true
                     }: Props) => {
     const cameraRef = useRef<MapboxGL.Camera | null>(null);
-    // No need for userLocation state within Map component if MapboxGL.UserLocation handles it
-    // const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
     const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
 
-    // Request location permissions (can be kept as is, or managed by UserLocation component)
+    // Request location permissions
     useEffect(() => {
         let subscription: Location.LocationSubscription | undefined;
 
@@ -53,14 +52,13 @@ export const Map = ({
                     return;
                 }
 
-                // Get initial location to potentially center map or for external use
+                // Get initial location
                 const location = await Location.getCurrentPositionAsync({
                     accuracy: Location.Accuracy.High,
                 });
-                // setUserLocation(location); // Handled by MapboxGL.UserLocation or onUserLocationUpdate
                 onLocationUpdate?.(location);
 
-                // If continuous updates are needed outside the map's own user location feature
+                // Continuous updates if needed
                 subscription = await Location.watchPositionAsync(
                     {
                         accuracy: Location.Accuracy.High,
@@ -68,7 +66,6 @@ export const Map = ({
                         distanceInterval: 10,
                     },
                     (newLocation) => {
-                        // setUserLocation(newLocation); // Handled by MapboxGL.UserLocation
                         onLocationUpdate?.(newLocation);
                     }
                 );
@@ -78,7 +75,7 @@ export const Map = ({
             }
         };
 
-        if (showUserLocation && onLocationUpdate) { // Only start if explicitly needed by parent
+        if (showUserLocation && onLocationUpdate) {
             startLocationTracking();
         }
 
@@ -89,45 +86,43 @@ export const Map = ({
         };
     }, [showUserLocation, onLocationUpdate]);
 
-
     // Auto-fit map to show route
     useEffect(() => {
         if (mapRef.current && cameraRef.current && routeCoordinates.length > 0) {
-            const points: GeoJSON.Position[] = [];
+            const points: [number, number][] = [];
             if (origin) points.push([origin.longitude, origin.latitude]);
             routeCoordinates.forEach(coord => points.push([coord.longitude, coord.latitude]));
             if (destination) points.push([destination.longitude, destination.latitude]);
 
             if (points.length > 1) {
+                // Calculate proper bounding box
+                let minLng = points[0][0], maxLng = points[0][0];
+                let minLat = points[0][1], maxLat = points[0][1];
+
+                points.forEach(p => {
+                    minLng = Math.min(minLng, p[0]);
+                    maxLng = Math.max(maxLng, p[0]);
+                    minLat = Math.min(minLat, p[1]);
+                    maxLat = Math.max(maxLat, p[1]);
+                });
+
                 cameraRef.current.fitBounds(
-                    points[0], // southwest
-                    points[points.length -1], // northeast (this is simplified, proper bounds calculation needed)
+                    [maxLng, maxLat], // northeast
+                    [minLng, minLat], // southwest
                     [50, 50, 50, 50], // padding
                     1000 // animation duration
                 );
-                // For more accurate bounds:
-                // Calculate bounding box of all points
-                // let minLng = points[0][0], maxLng = points[0][0];
-                // let minLat = points[0][1], maxLat = points[0][1];
-                // points.forEach(p => {
-                //   minLng = Math.min(minLng, p[0]);
-                //   maxLng = Math.max(maxLng, p[0]);
-                //   minLat = Math.min(minLat, p[1]);
-                //   maxLat = Math.max(maxLat, p[1]);
-                // });
-                // cameraRef.current.fitBounds([maxLng, maxLat], [minLng, minLat], [50,50,50,50], 1000);
             } else if (points.length === 1) {
-                 cameraRef.current.setCamera({
-                     centerCoordinate: points[0],
-                     zoomLevel: 14, // Default zoom for a single point
-                     animationDuration: 1000,
-                 });
+                cameraRef.current.setCamera({
+                    centerCoordinate: points[0],
+                    zoomLevel: 14,
+                    animationDuration: 1000,
+                });
             }
         }
     }, [routeCoordinates, origin, destination, mapRef, cameraRef]);
 
-
-    const handleMarkerPress = useCallback((markerId: string, feature: GeoJSON.Feature) => {
+    const handleMarkerPress = useCallback((markerId: string, feature: any) => {
         console.log(`${markerId} marker pressed. Title: ${feature.properties?.title}`);
     }, []);
 
@@ -147,25 +142,20 @@ export const Map = ({
     } : null;
 
     const initialCameraSettings = initialRegion ? {
-        centerCoordinate: [initialRegion.longitude, initialRegion.latitude],
+        centerCoordinate: [initialRegion.longitude, initialRegion.latitude] as [number, number],
         zoomLevel: deltaToZoom(initialRegion.latitudeDelta),
     } : {
-        zoomLevel: 2, // Default zoom if no initial region
-        centerCoordinate: [0,0] // Default center
+        zoomLevel: 2,
+        centerCoordinate: [0, 0] as [number, number]
     };
-
 
     return (
         <MapboxGL.MapView
             ref={mapRef}
-            styleURL={MapboxGL.StyleURL.Street} // Or your custom style
-            style={className ? { flex: 1, width: '100%', height: '100%' } : { flex: 1 }} // Apply className as style
-            // Removed unsupported props like showsTraffic, loadingEnabled directly
-            // Compass is usually part of the map style or can be added with Ornament
-            // MyLocationButton needs to be custom or handled by UserLocation component
-            // Pitch/Rotate/Zoom/Scroll are generally enabled by default
-            logoEnabled={true} // Ensure Mapbox logo is shown
-            attributionEnabled={true} // Ensure Mapbox attribution is shown
+            styleURL={MapboxGL.StyleURL.Street}
+            style={className ? { flex: 1, width: '100%', height: '100%' } : { flex: 1 }}
+            logoEnabled={true}
+            attributionEnabled={true}
         >
             <MapboxGL.Camera
                 ref={cameraRef}
@@ -177,34 +167,64 @@ export const Map = ({
             {showUserLocation && (
                 <MapboxGL.UserLocation
                     visible={true}
-                    onUpdate={onLocationUpdate} // This gives Location.LocationObject
+                    onUpdate={onLocationUpdate}
                     showsUserHeadingIndicator={true}
                 />
             )}
 
-            {/* Origin Marker */}
+            {/* Origin Marker - FIXED: Added children */}
             {origin && (
                 <MapboxGL.PointAnnotation
-                    id="origin-annotation" // Unique ID
+                    id="origin-annotation"
                     coordinate={[origin.longitude, origin.latitude]}
                     title="Pickup Location"
                     onSelected={(feature) => handleMarkerPress("origin-annotation", feature)}
                 >
-                    {/* Optional: Custom view for annotation */}
-                    {/* <View style={{width: 20, height: 20, backgroundColor: 'green', borderRadius: 10}} /> */}
+                    <View style={{
+                        width: 30,
+                        height: 30,
+                        backgroundColor: '#22C55E',
+                        borderRadius: 15,
+                        borderWidth: 3,
+                        borderColor: 'white',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 3,
+                        elevation: 5,
+                    }}>
+                        <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>A</Text>
+                    </View>
                 </MapboxGL.PointAnnotation>
             )}
 
-            {/* Destination Marker */}
+            {/* Destination Marker - FIXED: Added children */}
             {destination && (
                 <MapboxGL.PointAnnotation
-                    id="destination-annotation" // Unique ID
+                    id="destination-annotation"
                     coordinate={[destination.longitude, destination.latitude]}
                     title="Destination"
                     onSelected={(feature) => handleMarkerPress("destination-annotation", feature)}
                 >
-                    {/* Optional: Custom view for annotation */}
-                    {/* <View style={{width: 20, height: 20, backgroundColor: 'red', borderRadius: 10}} /> */}
+                    <View style={{
+                        width: 30,
+                        height: 30,
+                        backgroundColor: '#EF4444',
+                        borderRadius: 15,
+                        borderWidth: 3,
+                        borderColor: 'white',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 3,
+                        elevation: 5,
+                    }}>
+                        <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>B</Text>
+                    </View>
                 </MapboxGL.PointAnnotation>
             )}
 
@@ -216,7 +236,6 @@ export const Map = ({
                         style={{
                             lineColor: "#007AFF",
                             lineWidth: 4,
-                            // lineDasharray: [0] // For solid line, or specify pattern
                         }}
                     />
                 </MapboxGL.ShapeSource>
