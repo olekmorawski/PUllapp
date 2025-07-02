@@ -4,14 +4,14 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9d9da520-e21e-480b-b7dd-86b0e0d98276" name="Changes" comment="removed logo">
-      <change afterPath="$PROJECT_DIR$/components/BottomSheetHeader.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/ConfirmButton.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/LocationInputs.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/RideOptionCard.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/RideOptionList.tsx" afterDir="false" />
+    <list default="true" id="9d9da520-e21e-480b-b7dd-86b0e0d98276" name="Changes" comment="destructurization">
+      <change afterPath="$PROJECT_DIR$/components/LocationService.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/index.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/BottomSheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BottomSheet.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/Map.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/Map.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -57,11 +57,20 @@
       <option name="project" value="LOCAL" />
       <updated>1751391218681</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="destructurization">
+      <option name="closed" value="true" />
+      <created>1751451980814</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1751451980814</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="removed logo" />
-    <option name="LAST_COMMIT_MESSAGE" value="removed logo" />
+    <MESSAGE value="destructurization" />
+    <option name="LAST_COMMIT_MESSAGE" value="destructurization" />
   </component>
 </project>
