@@ -410,58 +410,81 @@ export class PlacesService {
 }
 
 // Real-time tracking service
+// Interface for Expo Location Object for better type safety
+interface ExpoLocationObject extends Location.LocationObject {}
+
+// Interface for options passed to RealTimeTrackingService constructor
+interface RealTimeTrackingServiceOptions extends Location.LocationWatchOptions {
+    baseInterval?: number;
+    speedThreshold?: number;
+}
+
 export class RealTimeTrackingService {
-    constructor(options = {}) {
-        this.baseInterval = options.baseInterval || 4000; // 4 seconds
-        this.speedThreshold = options.speedThreshold || 5; // 5 m/s (approx 18 km/h)
+    private baseInterval: number;
+    private speedThreshold: number; // m/s
+    public isTracking: boolean;
+    private subscribers: Set<(location: ExpoLocationObject) => void>;
+    public lastLocation: ExpoLocationObject | null;
+    private currentTrackingOptions: Location.LocationWatchOptions;
+    private locationSubscription: Location.LocationSubscription | null;
+
+    constructor(options: RealTimeTrackingServiceOptions = {}) {
+        this.baseInterval = options.baseInterval || 5000; // Default 5 seconds
+        this.speedThreshold = options.speedThreshold || 2; // Default 2 m/s (7.2 km/h)
         this.isTracking = false;
         this.subscribers = new Set();
         this.lastLocation = null;
-        this.currentTrackingOptions = {};
-        this.locationSubscription = null; // Stores the subscription from LocationService
+        this.currentTrackingOptions = { // Initialize with defaults that match LocationWatchOptions
+            accuracy: Location.Accuracy.High,
+            timeInterval: this.baseInterval,
+            distanceInterval: 10, // meters
+            mayShowUserSettingsDialog: true, // Default from LocationWatchOptions
+        };
+        this.locationSubscription = null;
     }
 
-    subscribe(callback) {
+    subscribe(callback: (location: ExpoLocationObject) => void): () => void {
         this.subscribers.add(callback);
         return () => {
             this.subscribers.delete(callback);
         };
     }
 
-    calculateOptimalInterval(location) {
-        const speed = location.coords?.speed || 0; // m/s
-
-        if (speed > this.speedThreshold) { // Faster movement
-            return Math.max(1000, this.baseInterval * 0.5); // e.g., 2000ms if base is 4000ms
-        } else if (speed < 1) { // Nearly stationary
-            return Math.min(30000, this.baseInterval * 4); // e.g., 16000ms if base is 4000ms
+    private calculateOptimalInterval(location: ExpoLocationObject): number {
+        const speed = location.coords?.speed || 0;
+        if (speed > this.speedThreshold) {
+            return Math.max(1000, (this.currentTrackingOptions.timeInterval || this.baseInterval) * 0.5);
+        } else if (speed < 0.5) { // Very slow or stationary
+            return Math.min(20000, (this.currentTrackingOptions.timeInterval || this.baseInterval) * 3);
         }
-        return this.baseInterval; // Standard interval
+        return this.currentTrackingOptions.timeInterval || this.baseInterval;
     }
 
-    async startTracking(options = {}) {
+    async startTracking(options: Location.LocationWatchOptions = {}): Promise<void> {
         if (this.isTracking) {
             console.warn('RealTimeTrackingService: Tracking already started.');
             return;
         }
-
         try {
             const permissions = await LocationService.requestPermissions();
             if (permissions.foreground !== 'granted') {
                 throw new Error('Location permission not granted for real-time tracking.');
             }
-
             this.isTracking = true;
+            // Merge provided options with defaults, ensuring baseInterval is used for timeInterval if not specified
             this.currentTrackingOptions = {
-                accuracy: Location.Accuracy.High,
-                timeInterval: this.baseInterval,
-                distanceInterval: 10, // Default distance interval, can be overridden by options
-                ...options,
+                ...this.currentTrackingOptions, // Keep existing defaults like accuracy
+                timeInterval: this.baseInterval, // Set initial timeInterval from baseInterval
+                ...options, // Override with any options passed to startTracking
             };
+             // Ensure timeInterval is explicitly set from baseInterval if not in options
+            if (options.timeInterval === undefined) {
+                this.currentTrackingOptions.timeInterval = this.baseInterval;
+            }
+
 
             await this._startInternalTracking();
-            console.log('RealTimeTrackingService: Tracking started with interval:', this.currentTrackingOptions.timeInterval);
-
+            console.log('RealTimeTrackingService: Tracking started with options:', JSON.stringify(this.currentTrackingOptions));
         } catch (error) {
             this.isTracking = false;
             console.error('RealTimeTrackingService: Failed to start tracking:', error);
@@ -469,16 +492,20 @@ export class RealTimeTrackingService {
         }
     }
 
-    async _startInternalTracking() {
-        if (this.locationSubscription) { // Should be cleared by stopLocationTracking
+    private async _startInternalTracking(): Promise<void> {
+        // Stop any existing subscription managed by this service instance
+        if (this.locationSubscription) {
             this.locationSubscription.remove();
             this.locationSubscription = null;
         }
+        // Also ensure the static subscription in LocationService is stopped if it's the one we're managing
+        // This is a bit tricky as RealTimeTrackingService now uses LocationService.startLocationTracking
+        // which returns the subscription. The key is that LocationService.startLocationTracking
+        // itself should handle clearing its static `locationSubscription`.
 
         this.locationSubscription = await LocationService.startLocationTracking(
-            (location) => { // Callback on location update
+            (location: ExpoLocationObject) => {
                 this.lastLocation = location;
-
                 this.subscribers.forEach(callback => {
                     try {
                         callback(location);
@@ -549,63 +576,9 @@ export class RealTimeTrackingService {
     }
 }
 
-// ... LocationService class itself needs a slight modification for startLocationTracking to return the subscription
-export class LocationService {
-    static locationSubscription = null; // This is the actual subscription object from expo-location
-    static lastKnownLocation = null;
-
-    // ... (requestPermissions, getCurrentLocationWithFallback) ...
-
-    static async startLocationTracking(callback, options = {}) { // Modified to return subscription
-        const defaultOptions = {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 4000,
-            distanceInterval: 10,
-            ...options
-        };
-
-        try {
-            // Ensure any old subscription is cleared before starting a new one
-            // This is crucial if startLocationTracking could be called from multiple places,
-            // though primarily RealTimeTrackingService will manage its lifecycle.
-            if (this.locationSubscription) {
-                this.locationSubscription.remove();
-                this.locationSubscription = null;
-                console.log("LocationService: Cleared existing watchPositionAsync subscription before starting new one.");
-            }
-
-            this.locationSubscription = await Location.watchPositionAsync(
-                defaultOptions,
-                (location) => {
-                    this.lastKnownLocation = location;
-                    // Caching location can be done here or by the caller if needed
-                    // this.cacheLocation(location);
-                    callback(location);
-                }
-            );
-            console.log("LocationService: watchPositionAsync subscription started with interval:", defaultOptions.timeInterval);
-            return this.locationSubscription; // Return the subscription object
-        } catch (error) {
-            console.error('LocationService: Location tracking setup failed:', error);
-            throw error;
-        }
-    }
-
-    static stopLocationTracking() {
-        if (this.locationSubscription) {
-            this.locationSubscription.remove();
-            this.locationSubscription = null;
-            console.log("LocationService: watchPositionAsync subscription removed.");
-        } else {
-            // console.log("LocationService: No active watchPositionAsync subscription to remove.");
-        }
-    }
-    // ... (cacheLocation, getCachedLocation, formatLocationForAPI) ...
-}
-
-
 // Export singleton instances for easy use
-export const locationService = new LocationService(); // LocationService itself is not a singleton constructor
+// The 'locationService' instance will be created from the primary LocationService class defined above.
+export const locationService = new LocationService();
 export const directionsService = new DirectionsService();
 export const placesService = new PlacesService();
 // Initialize with a default base interval, e.g., 5 seconds. This can be configured.
