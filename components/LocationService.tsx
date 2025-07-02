@@ -1,15 +1,140 @@
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const GOOGLE_MAPS_API_KEY = 'AIzaSyAwrnA0SWKH89KLa-v2RGfEx7akD8nX48c';
+// Configuration - Replace with your actual API keys
+const GOOGLE_MAPS_API_KEY = 'AIzaSyD7Z9TTNdp6ko6N2w5EqMLoqdCsB_mlBRk';
 const MAPBOX_ACCESS_TOKEN = 'YOUR_MAPBOX_ACCESS_TOKEN';
 
-// Location Service for precise geolocation
-export class LocationService {
-    static locationSubscription = null;
-    static lastKnownLocation = null;
+// ===== TYPE DEFINITIONS =====
 
-    static async requestPermissions() {
+// Use expo-location types for full location data
+export type LocationData = Location.LocationObject;
+export type FullLocationCoords = Location.LocationObjectCoords;
+
+// Flexible coordinate types for our APIs
+export interface SimpleCoords {
+    latitude: number;
+    longitude: number;
+}
+
+// Union type that accepts both simple and full coordinates
+export type LocationCoords = SimpleCoords | FullLocationCoords;
+
+// Utility type for input parameters - accepts simple coords, full coords, or location objects
+export type LocationInput = LocationCoords | LocationData | string;
+
+// Custom types for our services
+export interface PlaceResult {
+    id: string;
+    title: string;
+    subtitle: string;
+    fullAddress: string;
+    coordinates?: SimpleCoords; // Use simple coords for place results
+    placeId?: string;
+    types?: string[];
+}
+
+export interface DirectionsResult {
+    coordinates: SimpleCoords[]; // Use simple coords for route display
+    distance: number;
+    duration: number;
+    distanceText: string;
+    durationText: string;
+    instructions: DirectionInstruction[];
+    bounds: any;
+    rawResponse: any;
+}
+
+export interface DirectionInstruction {
+    instruction: string;
+    distance: string;
+    duration: string;
+    coordinates: SimpleCoords[];
+}
+
+export interface DirectionsOptions {
+    mode?: string;
+    language?: string;
+    alternatives?: string;
+    avoid?: string;
+    departure_time?: string;
+    waypoints?: LocationInput[];
+    optimizeWaypoints?: boolean;
+    additionalParams?: Record<string, string>;
+}
+
+export interface PlacesSearchOptions {
+    sessionId?: string;
+    types?: string;
+    language?: string;
+    components?: string;
+    location?: LocationCoords;
+    radius?: string;
+    limit?: number;
+    country?: string;
+    additionalParams?: Record<string, string>;
+}
+
+export interface PermissionStatus {
+    foreground: Location.PermissionStatus;
+    background: Location.PermissionStatus;
+}
+
+// Fixed tracking options interface
+export interface RealTimeTrackingOptions {
+    baseInterval?: number;
+    speedThreshold?: number;
+    accuracy?: Location.Accuracy;
+    timeInterval?: number;
+    distanceInterval?: number;
+    mayShowUserSettingsDialog?: boolean;
+}
+
+// ===== UTILITY FUNCTIONS =====
+
+// Helper function to convert any location input to a simple coordinate
+function toSimpleCoords(location: LocationInput): SimpleCoords {
+    if (typeof location === 'string') {
+        // Parse string coordinates like "37.7749,-122.4194"
+        const [lat, lng] = location.split(',').map(Number);
+        return { latitude: lat, longitude: lng };
+    }
+
+    if ('coords' in location) {
+        // It's a LocationData object
+        return {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude
+        };
+    }
+
+    // It's already coordinates (simple or full)
+    return {
+        latitude: location.latitude,
+        longitude: location.longitude
+    };
+}
+
+// Helper function to create full location coords when needed
+function toFullLocationCoords(coords: SimpleCoords): FullLocationCoords {
+    return {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        altitude: null,
+        accuracy: null,
+        altitudeAccuracy: null,
+        heading: null,
+        speed: null
+    };
+}
+
+// ===== LOCATION SERVICE =====
+
+export class LocationService {
+    private static locationSubscription: Location.LocationSubscription | null = null;
+    private static lastKnownLocation: LocationData | null = null;
+
+    static async requestPermissions(): Promise<PermissionStatus> {
         try {
             const foregroundStatus = await Location.requestForegroundPermissionsAsync();
 
@@ -23,18 +148,24 @@ export class LocationService {
 
             return {
                 foreground: foregroundStatus.status,
-                background: 'denied'
+                background: 'denied' as Location.PermissionStatus
             };
         } catch (error) {
             console.error('Permission request error:', error);
-            return { foreground: 'denied', background: 'denied' };
+            return {
+                foreground: 'denied' as Location.PermissionStatus,
+                background: 'denied' as Location.PermissionStatus
+            };
         }
     }
 
-    static async getCurrentLocationWithFallback() {
+    static async getCurrentLocationWithFallback(): Promise<LocationData> {
         try {
+            // Use correct LocationOptions with proper timeout handling
             const location = await Location.getCurrentPositionAsync({
                 accuracy: Location.Accuracy.High,
+                timeInterval: 10000, // Use timeInterval instead of timeout
+                distanceInterval: 1
             });
 
             this.lastKnownLocation = location;
@@ -46,7 +177,7 @@ export class LocationService {
             try {
                 const location = await Location.getCurrentPositionAsync({
                     accuracy: Location.Accuracy.Balanced,
-                    timeout: 15000
+                    timeInterval: 15000
                 });
 
                 this.lastKnownLocation = location;
@@ -65,18 +196,22 @@ export class LocationService {
         }
     }
 
-    static async startLocationTracking(callback, options = {}) {
-        const defaultOptions = {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 4000, // 4 seconds
-            distanceInterval: 10, // 10 meters
-            ...options
+    static async startLocationTracking(
+        callback: (location: LocationData) => void,
+        options: RealTimeTrackingOptions = {}
+    ): Promise<Location.LocationSubscription> {
+        // Convert our options to expo-location format
+        const locationOptions: Location.LocationOptions = {
+            accuracy: options.accuracy || Location.Accuracy.High,
+            timeInterval: options.timeInterval || 4000,
+            distanceInterval: options.distanceInterval || 10,
+            mayShowUserSettingsDialog: options.mayShowUserSettingsDialog
         };
 
         try {
             this.locationSubscription = await Location.watchPositionAsync(
-                defaultOptions,
-                (location) => {
+                locationOptions,
+                (location: LocationData) => {
                     this.lastKnownLocation = location;
                     this.cacheLocation(location);
                     callback(location);
@@ -90,14 +225,14 @@ export class LocationService {
         }
     }
 
-    static stopLocationTracking() {
+    static stopLocationTracking(): void {
         if (this.locationSubscription) {
             this.locationSubscription.remove();
             this.locationSubscription = null;
         }
     }
 
-    static async cacheLocation(location) {
+    static async cacheLocation(location: LocationData): Promise<void> {
         try {
             await AsyncStorage.setItem('lastKnownLocation', JSON.stringify(location));
         } catch (error) {
@@ -105,7 +240,7 @@ export class LocationService {
         }
     }
 
-    static async getCachedLocation() {
+    static async getCachedLocation(): Promise<LocationData | null> {
         try {
             const cached = await AsyncStorage.getItem('lastKnownLocation');
             return cached ? JSON.parse(cached) : null;
@@ -115,26 +250,32 @@ export class LocationService {
         }
     }
 
-    static formatLocationForAPI(location) {
+    // Updated to handle flexible location inputs
+    static formatLocationForAPI(location: LocationInput): string {
         if (typeof location === 'string') return location;
-        if (location?.coords) {
-            return `${location.coords.latitude},${location.coords.longitude}`;
-        }
-        if (location?.latitude && location?.longitude) {
-            return `${location.latitude},${location.longitude}`;
-        }
-        return location;
+
+        const coords = toSimpleCoords(location);
+        return `${coords.latitude},${coords.longitude}`;
     }
 }
 
-// Directions Service for route calculation
+// ===== DIRECTIONS SERVICE =====
+
 export class DirectionsService {
-    constructor(apiKey = GOOGLE_MAPS_API_KEY) {
+    private apiKey: string;
+    private baseUrl: string;
+
+    constructor(apiKey: string = GOOGLE_MAPS_API_KEY) {
         this.apiKey = apiKey;
         this.baseUrl = 'https://maps.googleapis.com/maps/api/directions/json';
     }
 
-    async getDirections(origin, destination, options = {}) {
+    // Updated to accept flexible location inputs
+    async getDirections(
+        origin: LocationInput,
+        destination: LocationInput,
+        options: DirectionsOptions = {}
+    ): Promise<DirectionsResult> {
         try {
             const params = new URLSearchParams({
                 origin: LocationService.formatLocationForAPI(origin),
@@ -164,11 +305,11 @@ export class DirectionsService {
             return this.parseDirectionsResponse(data);
         } catch (error) {
             console.error('Directions API Error:', error);
-            throw new Error(`Failed to get directions: ${error.message}`);
+            throw new Error(`Failed to get directions: ${(error as Error).message}`);
         }
     }
 
-    parseDirectionsResponse(data) {
+    private parseDirectionsResponse(data: any): DirectionsResult {
         if (data.status !== 'OK') {
             throw new Error(`Directions API Error: ${data.status} - ${data.error_message || 'Unknown error'}`);
         }
@@ -182,12 +323,12 @@ export class DirectionsService {
 
         return {
             coordinates,
-            distance: route.legs.reduce((total, leg) => total + leg.distance.value, 0),
-            duration: route.legs.reduce((total, leg) => total + leg.duration.value, 0),
-            distanceText: route.legs.map(leg => leg.distance.text).join(', '),
-            durationText: route.legs.map(leg => leg.duration.text).join(', '),
-            instructions: route.legs.flatMap(leg =>
-                leg.steps.map(step => ({
+            distance: route.legs.reduce((total: number, leg: any) => total + leg.distance.value, 0),
+            duration: route.legs.reduce((total: number, leg: any) => total + leg.duration.value, 0),
+            distanceText: route.legs.map((leg: any) => leg.distance.text).join(', '),
+            durationText: route.legs.map((leg: any) => leg.duration.text).join(', '),
+            instructions: route.legs.flatMap((leg: any) =>
+                leg.steps.map((step: any) => ({
                     instruction: step.html_instructions.replace(/<[^>]*>/g, ''),
                     distance: step.distance.text,
                     duration: step.duration.text,
@@ -199,17 +340,18 @@ export class DirectionsService {
         };
     }
 
-    decodePolyline(encoded) {
+    // Returns simple coordinates for easier consumption
+    private decodePolyline(encoded: string): SimpleCoords[] {
         if (!encoded) return [];
 
-        const poly = [];
+        const poly: SimpleCoords[] = [];
         let index = 0;
         const len = encoded.length;
         let lat = 0;
         let lng = 0;
 
         while (index < len) {
-            let b;
+            let b: number;
             let shift = 0;
             let result = 0;
 
@@ -244,9 +386,17 @@ export class DirectionsService {
     }
 }
 
-// Places Search Service for destination finding
+// ===== PLACES SERVICE =====
+
 export class PlacesService {
-    constructor(apiKey = GOOGLE_MAPS_API_KEY, useMapbox = false) {
+    private apiKey: string;
+    private useMapbox: boolean;
+    private sessionTokens: Map<string, string>;
+    private mapboxToken?: string;
+    private baseUrl: string;
+    public developmentMode: boolean = true; // Enable mock data by default
+
+    constructor(apiKey: string = GOOGLE_MAPS_API_KEY, useMapbox: boolean = false) {
         this.apiKey = apiKey;
         this.useMapbox = useMapbox;
         this.sessionTokens = new Map();
@@ -259,7 +409,12 @@ export class PlacesService {
         }
     }
 
-    async searchPlaces(query, options = {}) {
+    async searchPlaces(query: string, options: PlacesSearchOptions = {}): Promise<PlaceResult[]> {
+        // Return mock data during development
+        if (this.developmentMode) {
+            return this.getMockSearchResults(query);
+        }
+
         if (this.useMapbox) {
             return this.searchWithMapbox(query, options);
         } else {
@@ -267,7 +422,47 @@ export class PlacesService {
         }
     }
 
-    async searchWithGoogle(query, options = {}) {
+    // Mock search results for development - returns simple coordinates
+    private getMockSearchResults(query: string): Promise<PlaceResult[]> {
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                resolve([
+                    {
+                        id: 'mock-1',
+                        title: `${query} - Coffee Shop`,
+                        subtitle: 'San Francisco, CA, USA',
+                        fullAddress: `${query}, San Francisco, CA, USA`,
+                        coordinates: {
+                            latitude: 37.7749 + (Math.random() - 0.5) * 0.01,
+                            longitude: -122.4194 + (Math.random() - 0.5) * 0.01
+                        }
+                    },
+                    {
+                        id: 'mock-2',
+                        title: `${query} - Restaurant`,
+                        subtitle: 'Oakland, CA, USA',
+                        fullAddress: `${query}, Oakland, CA, USA`,
+                        coordinates: {
+                            latitude: 37.8044 + (Math.random() - 0.5) * 0.01,
+                            longitude: -122.2711 + (Math.random() - 0.5) * 0.01
+                        }
+                    },
+                    {
+                        id: 'mock-3',
+                        title: `${query} - Mall`,
+                        subtitle: 'San Jose, CA, USA',
+                        fullAddress: `${query}, San Jose, CA, USA`,
+                        coordinates: {
+                            latitude: 37.3382 + (Math.random() - 0.5) * 0.01,
+                            longitude: -121.8863 + (Math.random() - 0.5) * 0.01
+                        }
+                    }
+                ]);
+            }, 300);
+        });
+    }
+
+    private async searchWithGoogle(query: string, options: PlacesSearchOptions = {}): Promise<PlaceResult[]> {
         try {
             const sessionId = options.sessionId || 'default';
             let sessionToken = this.sessionTokens.get(sessionId);
@@ -299,7 +494,7 @@ export class PlacesService {
                 throw new Error(`Places API Error: ${data.status}`);
             }
 
-            return data.predictions.map(prediction => ({
+            return data.predictions.map((prediction: any) => ({
                 id: prediction.place_id,
                 title: prediction.structured_formatting.main_text,
                 subtitle: prediction.structured_formatting.secondary_text || '',
@@ -313,11 +508,11 @@ export class PlacesService {
         }
     }
 
-    async searchWithMapbox(query, options = {}) {
+    private async searchWithMapbox(query: string, options: PlacesSearchOptions = {}): Promise<PlaceResult[]> {
         try {
             const params = new URLSearchParams({
-                access_token: this.mapboxToken,
-                limit: options.limit || 5,
+                access_token: this.mapboxToken!,
+                limit: String(options.limit || 5),
                 types: options.types || 'poi,address',
                 language: options.language || 'en',
                 ...options.additionalParams
@@ -337,7 +532,7 @@ export class PlacesService {
             );
             const data = await response.json();
 
-            return data.features.map(feature => ({
+            return data.features.map((feature: any) => ({
                 id: feature.id,
                 title: feature.text,
                 subtitle: feature.place_name.replace(feature.text + ', ', ''),
@@ -354,7 +549,11 @@ export class PlacesService {
         }
     }
 
-    async getPlaceDetails(placeId, sessionId = 'default', fields = ['geometry', 'name', 'formatted_address']) {
+    async getPlaceDetails(
+        placeId: string,
+        sessionId: string = 'default',
+        fields: string[] = ['geometry', 'name', 'formatted_address']
+    ): Promise<any> {
         if (this.useMapbox) {
             // Mapbox doesn't need separate place details call
             return null;
@@ -401,85 +600,81 @@ export class PlacesService {
         }
     }
 
-    generateSessionToken() {
+    private generateSessionToken(): string {
         return Math.random().toString(36).substring(2, 15) +
             Math.random().toString(36).substring(2, 15);
     }
 }
 
-// Real-time tracking service
-// Interface for Expo Location Object for better type safety
-interface ExpoLocationObject extends Location.LocationObject {}
-
-// Interface for options passed to RealTimeTrackingService constructor
-interface RealTimeTrackingServiceOptions extends Location.LocationWatchOptions {
-    baseInterval?: number;
-    speedThreshold?: number;
-}
+// ===== REAL-TIME TRACKING SERVICE =====
 
 export class RealTimeTrackingService {
     private baseInterval: number;
     private speedThreshold: number; // m/s
     public isTracking: boolean;
-    private subscribers: Set<(location: ExpoLocationObject) => void>;
-    public lastLocation: ExpoLocationObject | null;
-    private currentTrackingOptions: Location.LocationWatchOptions;
+    private subscribers: Set<(location: LocationData) => void>;
+    public lastLocation: LocationData | null;
+    private currentTrackingOptions: RealTimeTrackingOptions;
     private locationSubscription: Location.LocationSubscription | null;
 
-    constructor(options: RealTimeTrackingServiceOptions = {}) {
+    constructor(options: RealTimeTrackingOptions = {}) {
         this.baseInterval = options.baseInterval || 5000; // Default 5 seconds
         this.speedThreshold = options.speedThreshold || 2; // Default 2 m/s (7.2 km/h)
         this.isTracking = false;
         this.subscribers = new Set();
         this.lastLocation = null;
-        this.currentTrackingOptions = { // Initialize with defaults that match LocationWatchOptions
+        this.currentTrackingOptions = {
             accuracy: Location.Accuracy.High,
             timeInterval: this.baseInterval,
             distanceInterval: 10, // meters
-            mayShowUserSettingsDialog: true, // Default from LocationWatchOptions
+            mayShowUserSettingsDialog: true,
+            baseInterval: this.baseInterval,
+            speedThreshold: this.speedThreshold
         };
         this.locationSubscription = null;
     }
 
-    subscribe(callback: (location: ExpoLocationObject) => void): () => void {
+    subscribe(callback: (location: LocationData) => void): () => void {
         this.subscribers.add(callback);
         return () => {
             this.subscribers.delete(callback);
         };
     }
 
-    private calculateOptimalInterval(location: ExpoLocationObject): number {
+    private calculateOptimalInterval(location: LocationData): number {
         const speed = location.coords?.speed || 0;
-        if (speed > this.speedThreshold) {
+        const validSpeed = (speed !== null && speed !== undefined && speed >= 0) ? speed : 0;
+
+        if (validSpeed > this.speedThreshold) {
             return Math.max(1000, (this.currentTrackingOptions.timeInterval || this.baseInterval) * 0.5);
-        } else if (speed < 0.5) { // Very slow or stationary
+        } else if (validSpeed < 0.5) { // Very slow or stationary
             return Math.min(20000, (this.currentTrackingOptions.timeInterval || this.baseInterval) * 3);
         }
         return this.currentTrackingOptions.timeInterval || this.baseInterval;
     }
 
-    async startTracking(options: Location.LocationWatchOptions = {}): Promise<void> {
+    async startTracking(options: RealTimeTrackingOptions = {}): Promise<void> {
         if (this.isTracking) {
             console.warn('RealTimeTrackingService: Tracking already started.');
             return;
         }
+
         try {
             const permissions = await LocationService.requestPermissions();
             if (permissions.foreground !== 'granted') {
                 throw new Error('Location permission not granted for real-time tracking.');
             }
+
             this.isTracking = true;
-            // Merge provided options with defaults, ensuring baseInterval is used for timeInterval if not specified
             this.currentTrackingOptions = {
-                ...this.currentTrackingOptions, // Keep existing defaults like accuracy
-                timeInterval: this.baseInterval, // Set initial timeInterval from baseInterval
-                ...options, // Override with any options passed to startTracking
+                ...this.currentTrackingOptions,
+                timeInterval: this.baseInterval,
+                ...options,
             };
-             // Ensure timeInterval is explicitly set from baseInterval if not in options
+
             if (options.timeInterval === undefined) {
                 this.currentTrackingOptions.timeInterval = this.baseInterval;
             }
-
 
             await this._startInternalTracking();
             console.log('RealTimeTrackingService: Tracking started with options:', JSON.stringify(this.currentTrackingOptions));
@@ -491,18 +686,13 @@ export class RealTimeTrackingService {
     }
 
     private async _startInternalTracking(): Promise<void> {
-        // Stop any existing subscription managed by this service instance
         if (this.locationSubscription) {
             this.locationSubscription.remove();
             this.locationSubscription = null;
         }
-        // Also ensure the static subscription in LocationService is stopped if it's the one we're managing
-        // This is a bit tricky as RealTimeTrackingService now uses LocationService.startLocationTracking
-        // which returns the subscription. The key is that LocationService.startLocationTracking
-        // itself should handle clearing its static `locationSubscription`.
 
         this.locationSubscription = await LocationService.startLocationTracking(
-            (location: ExpoLocationObject) => {
+            (location: LocationData) => {
                 this.lastLocation = location;
                 this.subscribers.forEach(callback => {
                     try {
@@ -519,65 +709,64 @@ export class RealTimeTrackingService {
 
                     setTimeout(async () => {
                         if (this.isTracking) {
-                           await this._restartTracking();
+                            await this._restartTracking();
                         }
-                    }, 0); // Schedule restart
+                    }, 0);
                 }
             },
             this.currentTrackingOptions
         );
     }
 
-    async _restartTracking() {
-        if (!this.isTracking) { // Check if tracking was stopped in the meantime
+    private async _restartTracking(): Promise<void> {
+        if (!this.isTracking) {
             console.log('RealTimeTrackingService: Tracking was stopped, aborting restart.');
             return;
         }
+
         console.log('RealTimeTrackingService: Restarting tracking with new interval:', this.currentTrackingOptions.timeInterval);
 
-        // LocationService.stopLocationTracking() handles removing the old subscription.
-        // It's called here to ensure the subscription held by LocationService is cleared.
         LocationService.stopLocationTracking();
-        this.locationSubscription = null; // Nullify our reference too.
+        this.locationSubscription = null;
 
-        // Brief pause before restarting, can sometimes help with stability
         await new Promise(resolve => setTimeout(resolve, 100));
 
-        if (this.isTracking) { // Double check if we should still be tracking
+        if (this.isTracking) {
             try {
                 await this._startInternalTracking();
             } catch (error) {
                 console.error('RealTimeTrackingService: Failed to restart tracking:', error);
-                this.isTracking = false; // Consider stopping tracking on restart failure
+                this.isTracking = false;
             }
         }
     }
 
-    stopTracking() {
+    stopTracking(): void {
         if (!this.isTracking) {
             return;
         }
+
         console.log('RealTimeTrackingService: Stopping tracking.');
-        // LocationService.stopLocationTracking() will remove the subscription.
         LocationService.stopLocationTracking();
         this.locationSubscription = null;
         this.isTracking = false;
-        // Subscribers are not cleared, allowing them to resubscribe if tracking starts again.
     }
 
-    getLastLocation() {
+    getLastLocation(): LocationData | null {
         return this.lastLocation;
     }
 
-    isCurrentlyTracking() {
+    isCurrentlyTracking(): boolean {
         return this.isTracking;
     }
 }
 
-// Export singleton instances for easy use
-// The 'locationService' instance will be created from the primary LocationService class defined above.
-export const locationService = new LocationService();
+// ===== EXPORT SINGLETON INSTANCES =====
+
 export const directionsService = new DirectionsService();
 export const placesService = new PlacesService();
-// Initialize with a default base interval, e.g., 5 seconds. This can be configured.
 export const trackingService = new RealTimeTrackingService({ baseInterval: 5000 });
+
+// ===== EXPORT UTILITY FUNCTIONS =====
+
+export { toSimpleCoords, toFullLocationCoords };
