@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Configuration - Replace with your actual API keys
 const GOOGLE_MAPS_API_KEY = 'AIzaSyD7Z9TTNdp6ko6N2w5EqMLoqdCsB_mlBRk';
-const MAPBOX_ACCESS_TOKEN = 'YOUR_MAPBOX_ACCESS_TOKEN';
+const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1Ijoib2xla21vcmF3c2tpIiwiYSI6ImNtY21jaXZnYTBnaTAybHMzMWp4cnB2MmYifQ.gmAgP14PfVyDhelFkHeFsg';
 
 // ===== TYPE DEFINITIONS =====
 
@@ -262,56 +262,71 @@ export class LocationService {
 // ===== DIRECTIONS SERVICE =====
 
 export class DirectionsService {
-    private apiKey: string;
+    private mapboxAccessToken: string;
     private baseUrl: string;
 
-    constructor(apiKey: string = GOOGLE_MAPS_API_KEY) {
-        this.apiKey = apiKey;
-        this.baseUrl = 'https://maps.googleapis.com/maps/api/directions/json';
+    constructor(mapboxAccessToken: string = MAPBOX_ACCESS_TOKEN) {
+        this.mapboxAccessToken = mapboxAccessToken;
+        this.baseUrl = 'https://api.mapbox.com/directions/v5/mapbox';
     }
 
-    // Updated to accept flexible location inputs
     async getDirections(
         origin: LocationInput,
         destination: LocationInput,
         options: DirectionsOptions = {}
     ): Promise<DirectionsResult> {
         try {
-            const params = new URLSearchParams({
-                origin: LocationService.formatLocationForAPI(origin),
-                destination: LocationService.formatLocationForAPI(destination),
-                key: this.apiKey,
-                mode: options.mode || 'DRIVING',
-                language: options.language || 'en',
-                alternatives: options.alternatives || 'false',
-                avoid: options.avoid || '',
-                departure_time: options.departure_time || 'now',
-                ...options.additionalParams
-            });
+            const originCoords = toSimpleCoords(origin);
+            const destinationCoords = toSimpleCoords(destination);
+
+            let coordinatesParam = `${originCoords.longitude},${originCoords.latitude};${destinationCoords.longitude},${destinationCoords.latitude}`;
 
             if (options.waypoints && options.waypoints.length > 0) {
                 const waypointsStr = options.waypoints
-                    .map(point => LocationService.formatLocationForAPI(point))
-                    .join('|');
-
-                params.append('waypoints',
-                    options.optimizeWaypoints ? `optimize:true|${waypointsStr}` : waypointsStr
-                );
+                    .map(point => {
+                        const wpCoords = toSimpleCoords(point);
+                        return `${wpCoords.longitude},${wpCoords.latitude}`;
+                    })
+                    .join(';');
+                coordinatesParam = `${originCoords.longitude},${originCoords.latitude};${waypointsStr};${destinationCoords.longitude},${destinationCoords.latitude}`;
             }
 
-            const response = await fetch(`${this.baseUrl}?${params}`);
+            const profile = options.mode ? options.mode.toLowerCase() : 'driving'; // Mapbox uses driving, walking, cycling
+
+            const params = new URLSearchParams({
+                access_token: this.mapboxAccessToken,
+                profile_type: profile, // Renamed from 'mode' for clarity with Mapbox
+                geometries: 'geojson', // Get coordinates in geojson format
+                overview: 'full', // Get full overview geometry
+                steps: 'true', // Get step-by-step instructions
+                alternatives: options.alternatives || 'false',
+                language: options.language || 'en',
+                ...(options.additionalParams || {})
+            });
+
+            // Mapbox specific options if needed (e.g., avoid toll, avoid highway)
+            if (options.avoid) {
+                // Mapbox uses exclude: 'toll' or exclude: 'motorway' etc.
+                // This needs more specific mapping if Google's 'avoid' values were used extensively
+                if (options.avoid.includes('tolls')) params.append('exclude', 'toll');
+                if (options.avoid.includes('highways')) params.append('exclude', 'motorway');
+                // Add more mappings as needed
+            }
+
+
+            const response = await fetch(`${this.baseUrl}/${profile}/${coordinatesParam}?${params}`);
             const data = await response.json();
 
-            return this.parseDirectionsResponse(data);
+            return this.parseMapboxDirectionsResponse(data);
         } catch (error) {
-            console.error('Directions API Error:', error);
+            console.error('Mapbox Directions API Error:', error);
             throw new Error(`Failed to get directions: ${(error as Error).message}`);
         }
     }
 
-    private parseDirectionsResponse(data: any): DirectionsResult {
-        if (data.status !== 'OK') {
-            throw new Error(`Directions API Error: ${data.status} - ${data.error_message || 'Unknown error'}`);
+    private parseMapboxDirectionsResponse(data: any): DirectionsResult {
+        if (data.code !== 'Ok') {
+            throw new Error(`Mapbox Directions API Error: ${data.code} - ${data.message || 'Unknown error'}`);
         }
 
         const route = data.routes[0];
@@ -319,92 +334,92 @@ export class DirectionsService {
             throw new Error('No route found');
         }
 
-        const coordinates = this.decodePolyline(route.overview_polyline.points);
+        // Mapbox returns coordinates as [longitude, latitude]
+        const routeCoordinates = route.geometry.coordinates.map((coord: number[]) => ({
+            latitude: coord[1],
+            longitude: coord[0]
+        }));
+
+        const instructions: DirectionInstruction[] = [];
+        route.legs.forEach((leg: any) => {
+            leg.steps.forEach((step: any) => {
+                instructions.push({
+                    instruction: step.maneuver.instruction,
+                    distance: this.formatDistance(step.distance),
+                    duration: this.formatDuration(step.duration),
+                    // Step geometry might not always be present or as detailed as polyline
+                    // For simplicity, we're using the main route geometry.
+                    // If per-step geometry is needed, it would require step.geometry.coordinates
+                    coordinates: step.geometry?.coordinates?.map((coord: number[]) => ({
+                        latitude: coord[1],
+                        longitude: coord[0],
+                    })) || []
+                });
+            });
+        });
+
+        const totalDistance = route.distance; // in meters
+        const totalDuration = route.duration; // in seconds
 
         return {
-            coordinates,
-            distance: route.legs.reduce((total: number, leg: any) => total + leg.distance.value, 0),
-            duration: route.legs.reduce((total: number, leg: any) => total + leg.duration.value, 0),
-            distanceText: route.legs.map((leg: any) => leg.distance.text).join(', '),
-            durationText: route.legs.map((leg: any) => leg.duration.text).join(', '),
-            instructions: route.legs.flatMap((leg: any) =>
-                leg.steps.map((step: any) => ({
-                    instruction: step.html_instructions.replace(/<[^>]*>/g, ''),
-                    distance: step.distance.text,
-                    duration: step.duration.text,
-                    coordinates: this.decodePolyline(step.polyline.points)
-                }))
-            ),
-            bounds: route.bounds,
+            coordinates: routeCoordinates,
+            distance: totalDistance,
+            duration: totalDuration,
+            distanceText: this.formatDistance(totalDistance),
+            durationText: this.formatDuration(totalDuration),
+            instructions: instructions,
+            bounds: { // Mapbox provides bbox [minLng, minLat, maxLng, maxLat]
+                      // This might need adjustment if the previous 'bounds' format was different
+                southwest: { latitude: route.bbox[1], longitude: route.bbox[0] },
+                northeast: { latitude: route.bbox[3], longitude: route.bbox[2] }
+            },
             rawResponse: data
         };
     }
 
-    // Returns simple coordinates for easier consumption
-    private decodePolyline(encoded: string): SimpleCoords[] {
-        if (!encoded) return [];
-
-        const poly: SimpleCoords[] = [];
-        let index = 0;
-        const len = encoded.length;
-        let lat = 0;
-        let lng = 0;
-
-        while (index < len) {
-            let b: number;
-            let shift = 0;
-            let result = 0;
-
-            do {
-                b = encoded.charCodeAt(index++) - 63;
-                result |= (b & 0x1f) << shift;
-                shift += 5;
-            } while (b >= 0x20);
-
-            const dlat = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
-            lat += dlat;
-
-            shift = 0;
-            result = 0;
-
-            do {
-                b = encoded.charCodeAt(index++) - 63;
-                result |= (b & 0x1f) << shift;
-                shift += 5;
-            } while (b >= 0x20);
-
-            const dlng = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
-            lng += dlng;
-
-            poly.push({
-                latitude: lat / 1e5,
-                longitude: lng / 1e5
-            });
+    private formatDistance(distanceInMeters: number): string {
+        if (distanceInMeters < 1000) {
+            return `${Math.round(distanceInMeters)} m`;
         }
-
-        return poly;
+        return `${(distanceInMeters / 1000).toFixed(1)} km`;
     }
+
+    private formatDuration(durationInSeconds: number): string {
+        const minutes = Math.round(durationInSeconds / 60);
+        if (minutes < 60) {
+            return `${minutes} min`;
+        }
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        if (remainingMinutes === 0) {
+            return `${hours} hr`;
+        }
+        return `${hours} hr ${remainingMinutes} min`;
+    }
+
+    // decodePolyline is not needed for Mapbox if using geometries=geojson
 }
 
 // ===== PLACES SERVICE =====
 
 export class PlacesService {
-    private apiKey: string;
+    private apiKey: string; // Still keeping for Google if it were a fallback, but we're defaulting to Mapbox
     private useMapbox: boolean;
-    private sessionTokens: Map<string, string>;
+    private sessionTokens: Map<string, string>; // Google specific, might not be needed for Mapbox
     private mapboxToken?: string;
     private baseUrl: string;
     public developmentMode: boolean = true; // Enable mock data by default
 
-    constructor(apiKey: string = GOOGLE_MAPS_API_KEY, useMapbox: boolean = false) {
-        this.apiKey = apiKey;
+    constructor(apiKey: string = GOOGLE_MAPS_API_KEY, useMapbox: boolean = true) { // Default useMapbox to true
+        this.apiKey = apiKey; // Google API Key
         this.useMapbox = useMapbox;
-        this.sessionTokens = new Map();
+        this.sessionTokens = new Map(); // Primarily for Google Places
 
-        if (useMapbox) {
+        if (this.useMapbox) {
             this.mapboxToken = MAPBOX_ACCESS_TOKEN;
             this.baseUrl = 'https://api.mapbox.com/geocoding/v5/mapbox.places';
         } else {
+            // Fallback to Google if explicitly set, though we intend to use Mapbox
             this.baseUrl = 'https://maps.googleapis.com/maps/api/place';
         }
     }
@@ -763,8 +778,8 @@ export class RealTimeTrackingService {
 
 // ===== EXPORT SINGLETON INSTANCES =====
 
-export const directionsService = new DirectionsService();
-export const placesService = new PlacesService();
+export const directionsService = new DirectionsService(MAPBOX_ACCESS_TOKEN); // Ensure it gets the token
+export const placesService = new PlacesService(GOOGLE_MAPS_API_KEY, true); // Explicitly use Mapbox
 export const trackingService = new RealTimeTrackingService({ baseInterval: 5000 });
 
 // ===== EXPORT UTILITY FUNCTIONS =====
