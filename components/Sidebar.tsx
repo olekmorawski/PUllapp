@@ -78,9 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
         onClose();
     };
 
-    if (!isVisible && slideAnim._value === -SIDEBAR_WIDTH) {
-        return null;
-    }
+    if (!isVisible) return null;
 
     return (
         <View

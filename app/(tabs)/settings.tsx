@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import StyledButton from '@/components/StyledButton';
-import { useAuthContext } from '../../context/AuthContext'; // Import useAuthContext
+import { useAuthContext } from '@/context/AuthContext'; // Import useAuthContext
 
 interface SettingsItemProps {
   label: string;

@@ -83,11 +83,8 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
 
     const translateY = useSharedValue(MIN_TRANSLATE_Y);
     const startY = useRef(0);
+    const searchTimeout = useRef<number | null>(null);
 
-    // Fixed: Use number instead of NodeJS.Timeout for React Native
-    const searchTimeout = useRef<number>();
-
-    // Auto-populate current location on mount
     useEffect(() => {
         if (userLocation && !currentLocation) {
             const address = `Current Location (${userLocation.coords?.latitude?.toFixed(4)}, ${userLocation.coords?.longitude?.toFixed(4)})`;

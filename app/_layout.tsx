@@ -1,13 +1,12 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import '../global.css'
 import { useColorScheme } from '@/hooks/useColorScheme';
-import React, { useEffect } from 'react'; // Ensure React is imported for useEffect
-import { useRouter, useSegments } from 'expo-router';
-import { AuthProvider, useAuthContext } from '../context/AuthContext'; // Import AuthProvider and useAuthContext
+import React, { useEffect } from 'react';
+import { useRouter, useSegments, Stack } from 'expo-router';
+import { AuthProvider, useAuthContext } from '@/context/AuthContext';
 
 // This is the component that will contain the navigation logic
 function RootNavigation() {
