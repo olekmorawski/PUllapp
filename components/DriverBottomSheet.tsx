@@ -127,6 +127,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 5,
         elevation: 10,
+        zIndex: 100, // Ensure it's above the map view
     },
     handleBarContainer: {
         alignItems: 'center',
