@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {StatusBar, Alert, View, Text, ActivityIndicator} from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { StatusBar, Alert, View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Header } from "@/components/Header";
@@ -8,7 +8,7 @@ import { BottomSheet } from "@/components/BottomSheet";
 import { MapboxMap } from "@/components/MapboxMap";
 import { DirectionsService } from '@/components/DirectionsService';
 import { LocationService } from '@/components/LocationService';
-import {MapView} from "@rnmapbox/maps";
+import * as Location from 'expo-location';
 
 interface LocationData {
     coordinates: {
@@ -21,11 +21,16 @@ interface LocationData {
 
 export default function RideAppInterface() {
     const [isSidebarVisible, setIsSidebarVisible] = useState(false);
-    const [userLocation, setUserLocation] = useState<any>(null);
+    const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
     const [origin, setOrigin] = useState<LocationData | null>(null);
     const [destination, setDestination] = useState<LocationData | null>(null);
     const [routeGeoJSON, setRouteGeoJSON] = useState<GeoJSON.Feature | null>(null);
-    const [routeInfo, setRouteInfo] = useState<any>(null);
+    const [routeInfo, setRouteInfo] = useState<{
+        distance: string;
+        duration: string;
+        distanceValue: number;
+        durationValue: number;
+    } | null>(null);
     const [isLoadingRoute, setIsLoadingRoute] = useState(false);
     const [selectedRide, setSelectedRide] = useState<any>(null);
 
@@ -111,19 +116,19 @@ export default function RideAppInterface() {
         console.log('Updated estimates for', distanceKm.toFixed(1), 'km route');
     };
 
-    const handleLocationSelect = (type: 'origin' | 'destination', location: LocationData) => {
+    const handleLocationSelect = useCallback((type: 'origin' | 'destination', location: LocationData) => {
         if (type === 'origin') {
             setOrigin(location);
         } else {
             setDestination(location);
         }
-    };
+    }, []);
 
-    const handleRideSelect = (ride: any, customPrice: string) => {
+    const handleRideSelect = useCallback((ride: any, customPrice: string) => {
         setSelectedRide({ ...ride, customPrice });
-    };
+    }, []);
 
-    const handleConfirmRide = () => {
+    const handleConfirmRide = useCallback(() => {
         if (!origin || !destination || !selectedRide) {
             Alert.alert('Missing Information', 'Please select pickup, destination, and ride type');
             return;
@@ -131,16 +136,15 @@ export default function RideAppInterface() {
 
         Alert.alert(
             'Confirm Ride',
-            `Confirm ${selectedRide.type} from ${origin.address} to ${destination.address}`,
+            `Confirm ${selectedRide.type} from ${origin.address} to ${destination.address}\n\nEstimated fare: $${(routeInfo?.distanceValue || 0 / 1000 * 1.5 + 3).toFixed(2)}`,
             [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Confirm', onPress: processRideConfirmation }
             ]
         );
-    };
+    }, [origin, destination, selectedRide, routeInfo]);
 
     const processRideConfirmation = () => {
-        // Ride processing logic
         Alert.alert('Ride Requested', 'Finding nearby drivers...');
 
         setTimeout(() => {
@@ -148,7 +152,7 @@ export default function RideAppInterface() {
         }, 3000);
     };
 
-    const handleLocationUpdate = (location: any) => {
+    const handleLocationUpdate = useCallback((location: Location.LocationObject) => {
         setUserLocation(location);
 
         // Update origin if it's set to current location
@@ -160,7 +164,7 @@ export default function RideAppInterface() {
                 isCurrentLocation: true
             });
         }
-    };
+    }, [origin]);
 
     const getInitialRegion = () => {
         if (userLocation?.coords) {
@@ -174,13 +178,21 @@ export default function RideAppInterface() {
         return initialStaticRegion;
     };
 
+    const handleMenuPress = () => setIsSidebarVisible(true);
+    const handleNotificationPress = () => console.log('Notifications pressed');
+    const handleProfilePress = () => router.push('/(tabs)/profile');
+    const handleHistoryPress = () => router.push('/(tabs)/history');
+    const handlePaymentPress = () => console.log('Payment pressed');
+    const handleSettingsPress = () => router.push('/(tabs)/settings');
+    const handleBecomeDriverPress = () => router.push('/(tabs)/become-driver');
+
     return (
-        <SafeAreaView className="flex-1 bg-gray-100">
+        <SafeAreaView className="flex-1 bg-gray-100" edges={["right", "top", "left", "bottom"]}>
             <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
 
             <Header
-                onMenuPress={() => setIsSidebarVisible(true)}
-                onNotificationPress={() => console.log('Notifications pressed')}
+                onMenuPress={handleMenuPress}
+                onNotificationPress={handleNotificationPress}
             />
 
             <MapboxMap
@@ -219,11 +231,11 @@ export default function RideAppInterface() {
             <Sidebar
                 isVisible={isSidebarVisible}
                 onClose={() => setIsSidebarVisible(false)}
-                onProfilePress={() => router.push('/(tabs)/profile')}
-                onHistoryPress={() => router.push('/(tabs)/history')}
-                onPaymentPress={() => console.log('Payment pressed')}
-                onSettingsPress={() => router.push('/(tabs)/settings')}
-                onBecomeDriverPress={() => router.push('/(tabs)/become-driver')}
+                onProfilePress={handleProfilePress}
+                onHistoryPress={handleHistoryPress}
+                onPaymentPress={handlePaymentPress}
+                onSettingsPress={handleSettingsPress}
+                onBecomeDriverPress={handleBecomeDriverPress}
             />
         </SafeAreaView>
     );

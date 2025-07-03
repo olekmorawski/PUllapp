@@ -6,6 +6,7 @@ import * as Location from 'expo-location';
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
+// Convert latitude delta to zoom level
 const deltaToZoom = (latitudeDelta: number) => {
     return Math.round(Math.log2(360 / latitudeDelta));
 };
@@ -21,7 +22,7 @@ interface Props {
     origin?: { latitude: number; longitude: number } | null;
     destination?: { latitude: number; longitude: number } | null;
     routeGeoJSON?: GeoJSON.Feature | null;
-    onLocationUpdate?: (location: Location.LocationObject) => void;
+    onLocationUpdate?: (location: Mapbox.Location) => void; // Updated to Mapbox's Location type
     showUserLocation?: boolean;
 }
 
@@ -83,11 +84,50 @@ export const MapboxMap: React.FC<Props> = ({
         setIsMapReady(true);
     };
 
+    // Create styles
+    const containerStyle = StyleSheet.create({
+        container: {
+            flex: 1,
+        },
+        map: {
+            flex: 1,
+        },
+        marker: {
+            width: 16,
+            height: 16,
+            borderRadius: 8,
+            borderWidth: 2,
+            borderColor: 'white',
+        },
+        originMarker: {
+            backgroundColor: '#00C851',
+        },
+        destinationMarker: {
+            backgroundColor: '#FF4444',
+        },
+        loader: {
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            marginTop: -25,
+            marginLeft: -25,
+            zIndex: 1000,
+        },
+    });
+
+    const routeLineStyle = {
+        lineColor: '#007AFF',
+        lineWidth: 4,
+        lineCap: 'round' as const,
+        lineJoin: 'round' as const,
+        lineOpacity: 0.8
+    };
+
     return (
-        <View style={styles.container}>
+        <View style={containerStyle.container}>
             {isLoading && (
                 <ActivityIndicator
-                    style={styles.loader}
+                    style={containerStyle.loader}
                     size="large"
                     color="#0066cc"
                 />
@@ -95,44 +135,56 @@ export const MapboxMap: React.FC<Props> = ({
 
             <MapView
                 ref={mapRef}
-                style={styles.map}
+                style={containerStyle.map}
                 logoEnabled={true}
                 attributionEnabled={true}
                 onDidFinishLoadingMap={handleMapLoaded}
             >
-                <Camera ref={cameraRef} />
+                {/* Add key to Camera */}
+                <Camera key="camera" ref={cameraRef} />
 
+                {/* Add key to UserLocation */}
                 {showUserLocation && (
                     <Mapbox.UserLocation
+                        key="user-location"
                         visible={true}
                         showsUserHeadingIndicator={true}
-                        onUpdate={onLocationUpdate}
+                        onUpdate={onLocationUpdate} // Now uses Mapbox's Location type
                     />
                 )}
 
+                {/* Add key to PointAnnotation */}
                 {origin && (
                     <PointAnnotation
+                        key={`origin-${origin.latitude}-${origin.longitude}`}
                         id="origin"
                         coordinate={[origin.longitude, origin.latitude]}
                     >
-                        <View style={[styles.marker, styles.originMarker]} />
+                        <View style={[containerStyle.marker, containerStyle.originMarker]} />
                     </PointAnnotation>
                 )}
 
+                {/* Add key to PointAnnotation */}
                 {destination && (
                     <PointAnnotation
+                        key={`destination-${destination.latitude}-${destination.longitude}`}
                         id="destination"
                         coordinate={[destination.longitude, destination.latitude]}
                     >
-                        <View style={[styles.marker, styles.destinationMarker]} />
+                        <View style={[containerStyle.marker, containerStyle.destinationMarker]} />
                     </PointAnnotation>
                 )}
 
+                {/* Add key to ShapeSource */}
                 {routeGeoJSON && (
-                    <ShapeSource id="routeSource" shape={routeGeoJSON}>
+                    <ShapeSource
+                        key="route-source"
+                        id="routeSource"
+                        shape={routeGeoJSON}
+                    >
                         <LineLayer
                             id="routeLayer"
-                            style={styles.routeLine}
+                            style={routeLineStyle}
                         />
                     </ShapeSource>
                 )}
@@ -140,40 +192,3 @@ export const MapboxMap: React.FC<Props> = ({
         </View>
     );
 };
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    map: {
-        flex: 1,
-    },
-    marker: {
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        borderWidth: 2,
-        borderColor: 'white',
-    },
-    originMarker: {
-        backgroundColor: '#00C851',
-    },
-    destinationMarker: {
-        backgroundColor: '#FF4444',
-    },
-    loader: {
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        marginTop: -25,
-        marginLeft: -25,
-        zIndex: 1000,
-    },
-    routeLine: {
-        lineColor: '#007AFF',
-        lineWidth: 4,
-        lineCap: 'round',
-        lineJoin: 'round',
-        lineOpacity: 0.8
-    },
-});
