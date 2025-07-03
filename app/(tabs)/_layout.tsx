@@ -19,6 +19,19 @@ export default function TabLayout() {
             <Stack.Screen name="profile" />
             <Stack.Screen name="settings" />
             <Stack.Screen name="become-driver" />
+            <Stack.Screen
+                name="loading"
+                options={{
+                    headerShown: false, // loading.tsx handles its own header/lack thereof
+                }}
+            />
+            <Stack.Screen
+                name="trip"
+                options={{
+                    headerShown: true, // trip.tsx can have a header, e.g., "Driver En Route"
+                    title: "Trip Status" // Default title, can be overridden in trip.tsx
+                }}
+            />
             {/*
               Note: By not specifying `options` here for history, profile, etc.,
               we rely on the `Stack.Screen` options defined within each of those screen files themselves.

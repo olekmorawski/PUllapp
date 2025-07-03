@@ -150,11 +150,21 @@ export default function RideAppInterface() {
     }, [origin, destination, selectedRide, routeInfo]);
 
     const processRideConfirmation = () => {
-        Alert.alert('Ride Requested', 'Finding nearby drivers...');
+        // Alert.alert('Ride Requested', 'Finding nearby drivers...');
+        // setTimeout(() => {
+        //     Alert.alert('Driver Found', 'Your driver will arrive in 5 minutes');
+        // }, 3000);
 
-        setTimeout(() => {
-            Alert.alert('Driver Found', 'Your driver will arrive in 5 minutes');
-        }, 3000);
+        const estimatedFare = ((routeInfo?.distanceValue || 0) / 1000) * 1.5 + 3; // Basic price calculation
+
+        router.push({
+            pathname: '/(tabs)/loading',
+            params: {
+                price: estimatedFare.toFixed(2),
+                pickupAddress: origin?.address || 'Current Location',
+                destinationAddress: destination?.address || 'Not specified',
+            },
+        });
     };
 
     const handleLocationUpdate = useCallback(
