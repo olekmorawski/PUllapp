@@ -21,7 +21,11 @@ interface Props {
     };
     origin?: { latitude: number; longitude: number } | null;
     destination?: { latitude: number; longitude: number } | null;
-    routeGeoJSON?: GeoJSON.Feature | null;
+    routeGeoJSON?: GeoJSON.Feature | null; // For passenger or single route
+    driverToClientRouteGeoJSON?: GeoJSON.Feature | null; // Driver to client
+    clientToDestRouteGeoJSON?: GeoJSON.Feature | null; // Client to destination
+    driverPickupCoordinates?: { latitude: number; longitude: number } | null;
+    driverDestinationCoordinates?: { latitude: number; longitude: number } | null;
     onLocationUpdate?: (location: Mapbox.Location) => void; // Assuming Mapbox.Location is correct
     showUserLocation?: boolean;
 }
@@ -32,6 +36,10 @@ export const MapboxMap: React.FC<Props> = ({
                                                origin,
                                                destination,
                                                routeGeoJSON,
+                                               driverToClientRouteGeoJSON,
+                                               clientToDestRouteGeoJSON,
+                                               driverPickupCoordinates,
+                                               driverDestinationCoordinates,
                                                onLocationUpdate,
                                                showUserLocation = true
                                            }) => {
@@ -47,8 +55,23 @@ export const MapboxMap: React.FC<Props> = ({
             setIsLoading(true);
 
             try {
-                if (origin && destination) {
-                    // Fit to both origin and destination
+                if (driverToClientRouteGeoJSON && driverPickupCoordinates && driverDestinationCoordinates && origin) {
+                    // Driver view: fit driver, pickup, and destination
+                    // Assuming 'origin' prop is the driver's current location in this context
+                     cameraRef.current?.fitBounds(
+                        [
+                            Math.min(origin.longitude, driverPickupCoordinates.longitude, driverDestinationCoordinates.longitude),
+                            Math.min(origin.latitude, driverPickupCoordinates.latitude, driverDestinationCoordinates.latitude)
+                        ],
+                        [
+                            Math.max(origin.longitude, driverPickupCoordinates.longitude, driverDestinationCoordinates.longitude),
+                            Math.max(origin.latitude, driverPickupCoordinates.latitude, driverDestinationCoordinates.latitude)
+                        ],
+                        [60, 50, 100, 50], // Padding: top, right, bottom, left
+                        1000
+                    );
+                } else if (origin && destination) {
+                    // Passenger view: Fit to origin and destination
                     cameraRef.current?.fitBounds(
                         [origin.longitude, origin.latitude],
                         [destination.longitude, destination.latitude],
@@ -56,7 +79,7 @@ export const MapboxMap: React.FC<Props> = ({
                         1000
                     );
                 } else if (origin) {
-                    // Center on origin
+                    // Center on origin (generic)
                     cameraRef.current?.setCamera({
                         centerCoordinate: [origin.longitude, origin.latitude],
                         zoomLevel: 14,
@@ -115,12 +138,28 @@ export const MapboxMap: React.FC<Props> = ({
         },
     });
 
-    const routeLineStyle = {
-        lineColor: '#007AFF',
+    const routeLineStyle = { // Default/Passenger route
+        lineColor: '#007AFF', // Blue
         lineWidth: 4,
         lineCap: 'round' as const,
         lineJoin: 'round' as const,
         lineOpacity: 0.8
+    };
+
+    const driverToClientRouteStyle = {
+        lineColor: '#007BFF', // A distinct blue
+        lineWidth: 5,
+        lineCap: 'round' as const,
+        lineJoin: 'round' as const,
+        lineOpacity: 0.9
+    };
+
+    const clientToDestRouteStyle = {
+        lineColor: '#28A745', // Green
+        lineWidth: 5,
+        lineCap: 'round' as const,
+        lineJoin: 'round' as const,
+        lineOpacity: 0.9
     };
 
     return (
@@ -182,9 +221,37 @@ export const MapboxMap: React.FC<Props> = ({
                         id="routeSource"
                         shape={routeGeoJSON}
                     >
-                        <Mapbox.LineLayer  // Changed component
+                        <Mapbox.LineLayer
                             id="routeLayer"
                             style={routeLineStyle}
+                        />
+                    </Mapbox.ShapeSource>
+                )}
+
+                {/* Driver to Client Route */}
+                {driverToClientRouteGeoJSON && (
+                    <Mapbox.ShapeSource
+                        key="driverToClientRouteSource"
+                        id="driverToClientRouteSource"
+                        shape={driverToClientRouteGeoJSON}
+                    >
+                        <Mapbox.LineLayer
+                            id="driverToClientRouteLayer"
+                            style={driverToClientRouteStyle}
+                        />
+                    </Mapbox.ShapeSource>
+                )}
+
+                {/* Client to Destination Route */}
+                {clientToDestRouteGeoJSON && (
+                    <Mapbox.ShapeSource
+                        key="clientToDestRouteSource"
+                        id="clientToDestRouteSource"
+                        shape={clientToDestRouteGeoJSON}
+                    >
+                        <Mapbox.LineLayer
+                            id="clientToDestRouteLayer"
+                            style={clientToDestRouteStyle}
                         />
                     </Mapbox.ShapeSource>
                 )}

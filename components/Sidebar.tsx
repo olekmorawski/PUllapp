@@ -21,6 +21,8 @@ interface SidebarProps {
     onPaymentPress: () => void;
     onSettingsPress: () => void;
     onBecomeDriverPress?: () => void;
+    onSwitchToDriverViewPress?: () => void;
+    onSwitchToPassengerViewPress?: () => void; // Added for passenger view
 }
 
 export const Sidebar: React.FC<SidebarProps> = (props) => {
@@ -32,6 +34,8 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
         onPaymentPress,
         onSettingsPress,
         onBecomeDriverPress,
+        onSwitchToDriverViewPress,
+        onSwitchToPassengerViewPress, // Added for passenger view
     } = props;
 
     const slideAnim = React.useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
@@ -212,10 +216,11 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
                         }} />
 
                         {/* Become a Driver Button */}
-                        <TouchableOpacity
-                            onPress={handleBecomeDriver}
-                            style={{
-                                marginHorizontal: 20,
+                        {onBecomeDriverPress && ( // Conditionally render based on prop presence
+                            <TouchableOpacity
+                                onPress={handleBecomeDriver}
+                                style={{
+                                    marginHorizontal: 20,
                                 marginVertical: 8,
                                 backgroundColor: '#007AFF',
                                 borderRadius: 12,
@@ -258,6 +263,29 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
                             </View>
                             <Ionicons name="chevron-forward" size={20} color="white" />
                         </TouchableOpacity>
+                        )}
+
+                        {/* Switch View Button */}
+                        {onSwitchToDriverViewPress && (
+                            <SidebarItem
+                                icon="swap-horizontal-outline"
+                                title="Switch to Driver View"
+                                onPress={() => {
+                                    onSwitchToDriverViewPress();
+                                    onClose();
+                                }}
+                            />
+                        )}
+                        {onSwitchToPassengerViewPress && (
+                            <SidebarItem
+                                icon="swap-horizontal-outline"
+                                title="Switch to Passenger View"
+                                onPress={() => {
+                                    onSwitchToPassengerViewPress();
+                                    onClose();
+                                }}
+                            />
+                        )}
                     </View>
 
                     {/* Footer */}
