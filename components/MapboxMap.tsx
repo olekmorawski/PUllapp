@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import Mapbox, { Camera, MapView, PointAnnotation, ShapeSource, LineLayer } from '@rnmapbox/maps';
+import Mapbox from '@rnmapbox/maps'; // Changed import
 import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
-import * as Location from 'expo-location';
+// import * as Location from 'expo-location'; // This import is not used in this file
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
@@ -12,7 +12,7 @@ const deltaToZoom = (latitudeDelta: number) => {
 };
 
 interface Props {
-    mapRef: React.RefObject<MapView>;
+    mapRef: React.Ref<Mapbox.MapView>; // Changed to React.Ref for more flexibility
     initialRegion?: {
         latitude: number;
         longitude: number;
@@ -22,7 +22,7 @@ interface Props {
     origin?: { latitude: number; longitude: number } | null;
     destination?: { latitude: number; longitude: number } | null;
     routeGeoJSON?: GeoJSON.Feature | null;
-    onLocationUpdate?: (location: Mapbox.Location) => void; // Updated to Mapbox's Location type
+    onLocationUpdate?: (location: Mapbox.Location) => void; // Assuming Mapbox.Location is correct
     showUserLocation?: boolean;
 }
 
@@ -35,7 +35,7 @@ export const MapboxMap: React.FC<Props> = ({
                                                onLocationUpdate,
                                                showUserLocation = true
                                            }) => {
-    const cameraRef = useRef<Camera>(null);
+    const cameraRef = useRef<Mapbox.Camera>(null); // Changed type
     const [isMapReady, setIsMapReady] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -133,7 +133,7 @@ export const MapboxMap: React.FC<Props> = ({
                 />
             )}
 
-            <MapView
+            <Mapbox.MapView  // Changed component
                 ref={mapRef}
                 style={containerStyle.map}
                 logoEnabled={true}
@@ -141,7 +141,7 @@ export const MapboxMap: React.FC<Props> = ({
                 onDidFinishLoadingMap={handleMapLoaded}
             >
                 {/* Add key to Camera */}
-                <Camera key="camera" ref={cameraRef} />
+                <Mapbox.Camera key="camera" ref={cameraRef} />  // Changed component
 
                 {/* Add key to UserLocation */}
                 {showUserLocation && (
@@ -149,46 +149,46 @@ export const MapboxMap: React.FC<Props> = ({
                         key="user-location"
                         visible={true}
                         showsUserHeadingIndicator={true}
-                        onUpdate={onLocationUpdate} // Now uses Mapbox's Location type
+                        onUpdate={onLocationUpdate} // Assuming Mapbox.Location is correct
                     />
                 )}
 
                 {/* Add key to PointAnnotation */}
                 {origin && (
-                    <PointAnnotation
+                    <Mapbox.PointAnnotation  // Changed component
                         key={`origin-${origin.latitude}-${origin.longitude}`}
                         id="origin"
                         coordinate={[origin.longitude, origin.latitude]}
                     >
                         <View style={[containerStyle.marker, containerStyle.originMarker]} />
-                    </PointAnnotation>
+                    </Mapbox.PointAnnotation>
                 )}
 
                 {/* Add key to PointAnnotation */}
                 {destination && (
-                    <PointAnnotation
+                    <Mapbox.PointAnnotation  // Changed component
                         key={`destination-${destination.latitude}-${destination.longitude}`}
                         id="destination"
                         coordinate={[destination.longitude, destination.latitude]}
                     >
                         <View style={[containerStyle.marker, containerStyle.destinationMarker]} />
-                    </PointAnnotation>
+                    </Mapbox.PointAnnotation>
                 )}
 
                 {/* Add key to ShapeSource */}
                 {routeGeoJSON && (
-                    <ShapeSource
+                    <Mapbox.ShapeSource  // Changed component
                         key="route-source"
                         id="routeSource"
                         shape={routeGeoJSON}
                     >
-                        <LineLayer
+                        <Mapbox.LineLayer  // Changed component
                             id="routeLayer"
                             style={routeLineStyle}
                         />
-                    </ShapeSource>
+                    </Mapbox.ShapeSource>
                 )}
-            </MapView>
+            </Mapbox.MapView>
         </View>
     );
 };
