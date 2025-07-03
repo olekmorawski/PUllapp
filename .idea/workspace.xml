@@ -5,8 +5,28 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9d9da520-e21e-480b-b7dd-86b0e0d98276" name="Changes" comment="some fixes">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/BottomSheet/BottomSheet.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/BottomSheet/components/BottomSheetHeader.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/BottomSheet/components/FavouritesList.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/BottomSheet/components/LocationInputs.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/BottomSheet/components/RecentSearchesList.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/BottomSheet/components/SearchInput.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/BottomSheet/components/SearchResultItem.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/BottomSheet/components/SearchResults.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/BottomSheet/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/hooks/Location/LocationService.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/hooks/Location/useFavouriteLocations.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/hooks/Location/useLocation.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/hooks/Location/usePlacesSearch.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/hooks/Location/useRecentSearches.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/hooks/Location/useReverseGeocode.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/index.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/BottomSheet.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ConfirmButton.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BottomSheet/components/ConfirmButton.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/LocationService.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/MapboxMap.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/MapboxMap.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/RideOptionList.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BottomSheet/components/RideOptionList.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -17,6 +37,7 @@
     <option name="RECENT_TEMPLATES">
       <list>
         <option value="TypeScript JSX File" />
+        <option value="TypeScript File" />
       </list>
     </option>
   </component>
@@ -70,6 +91,13 @@
         <entry key="com.intellij.reactbuddy.storybook" value="false" />
       </map>
     </option>
+  </component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/hooks/Location" />
+      <recent name="$PROJECT_DIR$/components/BottomSheet/components" />
+      <recent name="$PROJECT_DIR$/components/BottomSheet" />
+    </key>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { RideOptionCard } from './RideOptionCard';
+import { RideOptionCard } from '../../RideOptionCard';
 
 interface RideOption {
     id: number;

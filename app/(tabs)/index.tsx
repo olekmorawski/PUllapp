@@ -2,14 +2,14 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { StatusBar, Alert, View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Header } from "@/components/Header";
-import { Sidebar } from "@/components/Sidebar";
-import { BottomSheet } from "@/components/BottomSheet";
-import { MapboxMap } from "@/components/MapboxMap";
-import Mapbox from '@rnmapbox/maps'; // Import Mapbox for types
+import { Header } from '@/components/Header';
+import { Sidebar } from '@/components/Sidebar';
+import { BottomSheet } from '@/components/BottomSheet/BottomSheet';
+import { MapboxMap } from '@/components/MapboxMap';
+import Mapbox from '@rnmapbox/maps';
+
 import { DirectionsService } from '@/components/DirectionsService';
-import { LocationService } from '@/components/LocationService';
-import * as ExpoLocation from 'expo-location'; // Alias expo-location to avoid conflict
+import {useLocation} from "@/hooks/Location/useLocation";
 
 interface LocationData {
     coordinates: {
@@ -22,7 +22,6 @@ interface LocationData {
 
 export default function RideAppInterface() {
     const [isSidebarVisible, setIsSidebarVisible] = useState(false);
-    const [userLocation, setUserLocation] = useState<ExpoLocation.LocationObject | null>(null); // Use aliased type
     const [origin, setOrigin] = useState<LocationData | null>(null);
     const [destination, setDestination] = useState<LocationData | null>(null);
     const [routeGeoJSON, setRouteGeoJSON] = useState<GeoJSON.Feature | null>(null);
@@ -35,11 +34,16 @@ export default function RideAppInterface() {
     const [isLoadingRoute, setIsLoadingRoute] = useState(false);
     const [selectedRide, setSelectedRide] = useState<any>(null);
 
-    const mapRef = useRef<Mapbox.MapView>(null); // Use Mapbox.MapView type
+    const mapRef = useRef<Mapbox.MapView>(null);
     const router = useRouter();
     const directionsService = new DirectionsService();
 
-    // Default static region
+    const {
+        location: userLocation,
+        error: locationError,
+        isLoading: isGettingLocation,
+    } = useLocation({ autoStart: true });
+
     const initialStaticRegion = {
         latitude: 37.78825,
         longitude: -122.4324,
@@ -47,30 +51,20 @@ export default function RideAppInterface() {
         longitudeDelta: 0.0421,
     };
 
-    // Initialize location services
     useEffect(() => {
-        const initializeLocation = async () => {
-            try {
-                await LocationService.requestPermissions();
-                const location = await LocationService.getCurrentLocationWithFallback();
-                setUserLocation(location);
+        if (userLocation && !origin) {
+            const address = `Current Location (${userLocation.coords.latitude.toFixed(4)}, ${userLocation.coords.longitude.toFixed(4)})`;
+            setOrigin({
+                coordinates: userLocation.coords,
+                address,
+                isCurrentLocation: true,
+            });
+        }
 
-                if (!origin) {
-                    const address = `Current Location (${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)})`;
-                    setOrigin({
-                        coordinates: location.coords,
-                        address,
-                        isCurrentLocation: true
-                    });
-                }
-            } catch (error) {
-                console.error('Location initialization error:', error);
-                Alert.alert('Location Error', 'Could not access your location. Some features may be limited.');
-            }
-        };
-
-        initializeLocation();
-    }, []);
+        if (locationError) {
+            Alert.alert('Location Error', 'Unable to access your location.');
+        }
+    }, [userLocation, locationError]);
 
     // Calculate route when both origin and destination are set
     useEffect(() => {
@@ -92,7 +86,7 @@ export default function RideAppInterface() {
                     distance: routeData.distanceText,
                     duration: routeData.durationText,
                     distanceValue: routeData.distance,
-                    durationValue: routeData.duration
+                    durationValue: routeData.duration,
                 });
 
                 updateRideEstimates(routeData);
@@ -107,23 +101,24 @@ export default function RideAppInterface() {
     }, [origin, destination]);
 
     const updateRideEstimates = (routeData: any) => {
-        // Calculate dynamic pricing based on distance
         const distanceKm = routeData.distance / 1000;
         const baseFare = 3;
         const perKmRate = 1.5;
-        const estimatedPrice = baseFare + (distanceKm * perKmRate);
+        const estimatedPrice = baseFare + distanceKm * perKmRate;
 
-        // Update ride options with dynamic pricing
         console.log('Updated estimates for', distanceKm.toFixed(1), 'km route');
     };
 
-    const handleLocationSelect = useCallback((type: 'origin' | 'destination', location: LocationData) => {
-        if (type === 'origin') {
-            setOrigin(location);
-        } else {
-            setDestination(location);
-        }
-    }, []);
+    const handleLocationSelect = useCallback(
+        (type: 'origin' | 'destination', location: LocationData) => {
+            if (type === 'origin') {
+                setOrigin(location);
+            } else {
+                setDestination(location);
+            }
+        },
+        []
+    );
 
     const handleRideSelect = useCallback((ride: any, customPrice: string) => {
         setSelectedRide({ ...ride, customPrice });
@@ -135,12 +130,14 @@ export default function RideAppInterface() {
             return;
         }
 
+        const estimatedFare = ((routeInfo?.distanceValue || 0) / 1000) * 1.5 + 3;
+
         Alert.alert(
             'Confirm Ride',
-            `Confirm ${selectedRide.type} from ${origin.address} to ${destination.address}\n\nEstimated fare: $${(routeInfo?.distanceValue || 0 / 1000 * 1.5 + 3).toFixed(2)}`,
+            `Confirm ${selectedRide.type} from ${origin.address} to ${destination.address}\n\nEstimated fare: $${estimatedFare.toFixed(2)}`,
             [
                 { text: 'Cancel', style: 'cancel' },
-                { text: 'Confirm', onPress: processRideConfirmation }
+                { text: 'Confirm', onPress: processRideConfirmation },
             ]
         );
     }, [origin, destination, selectedRide, routeInfo]);
@@ -153,33 +150,20 @@ export default function RideAppInterface() {
         }, 3000);
     };
 
-    const handleLocationUpdate = useCallback((mapboxLocation: Mapbox.Location) => {
-        // Convert Mapbox.Location to ExpoLocation.LocationObject
-        const expoLocationObject: ExpoLocation.LocationObject = {
-            coords: {
-                latitude: mapboxLocation.coords.latitude,
-                longitude: mapboxLocation.coords.longitude,
-                altitude: mapboxLocation.coords.altitude ?? null,
-                accuracy: mapboxLocation.coords.accuracy ?? null,
-                altitudeAccuracy: null, // Mapbox.Location.coords does not have altitudeAccuracy
-                heading: mapboxLocation.coords.heading ?? null,
-                speed: mapboxLocation.coords.speed ?? null,
-            },
-            timestamp: mapboxLocation.timestamp ?? Date.now(),
-            // mocked: mapboxLocation.mocked ?? false, // Check if Mapbox.Location has 'mocked' or similar
-        };
-        setUserLocation(expoLocationObject);
-
-        // Update origin if it's set to current location
-        if (origin?.isCurrentLocation) {
-            const address = `Current Location (${expoLocationObject.coords.latitude.toFixed(4)}, ${expoLocationObject.coords.longitude.toFixed(4)})`;
-            setOrigin({
-                coordinates: expoLocationObject.coords, // Use converted coords
-                address,
-                isCurrentLocation: true
-            });
-        }
-    }, [origin]);
+    const handleLocationUpdate = useCallback(
+        (mapboxLocation: Mapbox.Location) => {
+            const coords = mapboxLocation.coords;
+            if (origin?.isCurrentLocation) {
+                const address = `Current Location (${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)})`;
+                setOrigin({
+                    coordinates: coords,
+                    address,
+                    isCurrentLocation: true,
+                });
+            }
+        },
+        [origin]
+    );
 
     const getInitialRegion = () => {
         if (userLocation?.coords) {
@@ -202,13 +186,10 @@ export default function RideAppInterface() {
     const handleBecomeDriverPress = () => router.push('/(tabs)/become-driver');
 
     return (
-        <SafeAreaView className="flex-1 bg-gray-100" edges={["right", "top", "left", "bottom"]}>
+        <SafeAreaView className="flex-1 bg-gray-100" edges={['right', 'top', 'left', 'bottom']}>
             <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
 
-            <Header
-                onMenuPress={handleMenuPress}
-                onNotificationPress={handleNotificationPress}
-            />
+            <Header onMenuPress={handleMenuPress} onNotificationPress={handleNotificationPress} />
 
             <MapboxMap
                 mapRef={mapRef}
@@ -240,7 +221,6 @@ export default function RideAppInterface() {
                 onRideSelect={handleRideSelect}
                 onConfirmRide={handleConfirmRide}
                 onLocationSelect={handleLocationSelect}
-                userLocation={userLocation}
             />
 
             <Sidebar
