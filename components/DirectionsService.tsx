@@ -1,4 +1,4 @@
-import { MAPBOX_ACCESS_TOKEN } from '../constants/Tokens';
+import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
 
 interface RouteOptions {
     profile?: 'driving' | 'walking' | 'cycling' | 'driving-traffic';
