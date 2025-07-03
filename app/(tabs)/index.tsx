@@ -6,9 +6,10 @@ import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { BottomSheet } from "@/components/BottomSheet";
 import { MapboxMap } from "@/components/MapboxMap";
+import Mapbox from '@rnmapbox/maps'; // Import Mapbox for types
 import { DirectionsService } from '@/components/DirectionsService';
 import { LocationService } from '@/components/LocationService';
-import * as Location from 'expo-location';
+import * as ExpoLocation from 'expo-location'; // Alias expo-location to avoid conflict
 
 interface LocationData {
     coordinates: {
@@ -21,7 +22,7 @@ interface LocationData {
 
 export default function RideAppInterface() {
     const [isSidebarVisible, setIsSidebarVisible] = useState(false);
-    const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+    const [userLocation, setUserLocation] = useState<ExpoLocation.LocationObject | null>(null); // Use aliased type
     const [origin, setOrigin] = useState<LocationData | null>(null);
     const [destination, setDestination] = useState<LocationData | null>(null);
     const [routeGeoJSON, setRouteGeoJSON] = useState<GeoJSON.Feature | null>(null);
@@ -34,7 +35,7 @@ export default function RideAppInterface() {
     const [isLoadingRoute, setIsLoadingRoute] = useState(false);
     const [selectedRide, setSelectedRide] = useState<any>(null);
 
-    const mapRef = useRef<MapView>(null);
+    const mapRef = useRef<Mapbox.MapView>(null); // Use Mapbox.MapView type
     const router = useRouter();
     const directionsService = new DirectionsService();
 
@@ -152,14 +153,28 @@ export default function RideAppInterface() {
         }, 3000);
     };
 
-    const handleLocationUpdate = useCallback((location: Location.LocationObject) => {
-        setUserLocation(location);
+    const handleLocationUpdate = useCallback((mapboxLocation: Mapbox.Location) => {
+        // Convert Mapbox.Location to ExpoLocation.LocationObject
+        const expoLocationObject: ExpoLocation.LocationObject = {
+            coords: {
+                latitude: mapboxLocation.coords.latitude,
+                longitude: mapboxLocation.coords.longitude,
+                altitude: mapboxLocation.coords.altitude ?? null,
+                accuracy: mapboxLocation.coords.accuracy ?? null,
+                altitudeAccuracy: null, // Mapbox.Location.coords does not have altitudeAccuracy
+                heading: mapboxLocation.coords.heading ?? null,
+                speed: mapboxLocation.coords.speed ?? null,
+            },
+            timestamp: mapboxLocation.timestamp ?? Date.now(),
+            // mocked: mapboxLocation.mocked ?? false, // Check if Mapbox.Location has 'mocked' or similar
+        };
+        setUserLocation(expoLocationObject);
 
         // Update origin if it's set to current location
         if (origin?.isCurrentLocation) {
-            const address = `Current Location (${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)})`;
+            const address = `Current Location (${expoLocationObject.coords.latitude.toFixed(4)}, ${expoLocationObject.coords.longitude.toFixed(4)})`;
             setOrigin({
-                coordinates: location.coords,
+                coordinates: expoLocationObject.coords, // Use converted coords
                 address,
                 isCurrentLocation: true
             });
