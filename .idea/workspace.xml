@@ -5,8 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9d9da520-e21e-480b-b7dd-86b0e0d98276" name="Changes" comment="some fixes">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/(tabs)/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/(tabs)/index.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/BottomSheet/components/RideOptionList.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BottomSheet/components/RideOptionList.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/DirectionsService.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/DirectionsService.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/RideOptionCard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/BottomSheet/components/RideOptionCard.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -17,13 +20,14 @@
     <option name="RECENT_TEMPLATES">
       <list>
         <option value="TypeScript JSX File" />
+        <option value="TypeScript File" />
       </list>
     </option>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="fix/typescript-errors" />
+        <entry key="$PROJECT_DIR$" value="map" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -53,7 +57,7 @@
   &quot;keyToString&quot;: {
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;map&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;map-update&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
     &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
@@ -70,6 +74,13 @@
         <entry key="com.intellij.reactbuddy.storybook" value="false" />
       </map>
     </option>
+  </component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/components/BottomSheet/components" />
+      <recent name="$PROJECT_DIR$/hooks/Location" />
+      <recent name="$PROJECT_DIR$/components/BottomSheet" />
+    </key>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
@@ -112,7 +123,15 @@
       <workItem from="1751465699129" duration="498000" />
       <workItem from="1751540184112" duration="927000" />
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="some fixes">
+      <option name="closed" value="true" />
+      <created>1751548150214</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1751548150214</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -132,6 +151,7 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="removed logo" />
     <MESSAGE value="destructurization" />
-    <option name="LAST_COMMIT_MESSAGE" value="destructurization" />
+    <MESSAGE value="some fixes" />
+    <option name="LAST_COMMIT_MESSAGE" value="some fixes" />
   </component>
 </project>

@@ -141,7 +141,7 @@ export const MapboxMap: React.FC<Props> = ({
                 onDidFinishLoadingMap={handleMapLoaded}
             >
                 {/* Add key to Camera */}
-                <Mapbox.Camera key="camera" ref={cameraRef} />  // Changed component
+                <Mapbox.Camera key="camera" ref={cameraRef} />
 
                 {/* Add key to UserLocation */}
                 {showUserLocation && (
