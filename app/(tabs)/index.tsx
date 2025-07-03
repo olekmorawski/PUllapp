@@ -34,6 +34,13 @@ export default function RideAppInterface() {
     const [isLoadingRoute, setIsLoadingRoute] = useState(false);
     const [selectedRide, setSelectedRide] = useState<any>(null);
 
+    // Define sample ride options
+    const sampleRideOptions = [
+        { id: 1, type: 'Standard', time: '5 min', suggestedRange: '$10-12', icon: 'car' },
+        { id: 2, type: 'XL', time: '8 min', suggestedRange: '$15-18', icon: 'suv' },
+        { id: 3, type: 'Luxury', time: '6 min', suggestedRange: '$25-30', icon: 'luxury_car' },
+    ];
+
     const mapRef = useRef<Mapbox.MapView>(null);
     const router = useRouter();
     const directionsService = new DirectionsService();
@@ -218,6 +225,7 @@ export default function RideAppInterface() {
             )}
 
             <BottomSheet
+                rideOptions={sampleRideOptions}
                 onRideSelect={handleRideSelect}
                 onConfirmRide={handleConfirmRide}
                 onLocationSelect={handleLocationSelect}
