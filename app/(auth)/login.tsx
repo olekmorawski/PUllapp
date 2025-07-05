@@ -37,8 +37,6 @@ export default function LoginScreen() {
 
     try {
       await sendEmailOTP(trimmedEmail);
-
-      // Navigate to OTP verification screen
       router.push({
         pathname: '/(auth)/otp',
         params: { email: trimmedEmail }
@@ -53,9 +51,9 @@ export default function LoginScreen() {
     }
   };
 
-  const handleWalletLogin = () => {
-    showAuthFlow();
-  };
+  // const handleWalletLogin = () => {
+  //   showAuthFlow();
+  // };
 
   const handleEmailChange = (text: string) => {
     setEmail(text);
@@ -109,13 +107,13 @@ export default function LoginScreen() {
                 disabled={isLoading || !email.trim()}
             />
 
-            <StyledButton
-                title="Connect Wallet"
-                onPress={handleWalletLogin}
-                variant="secondary"
-                className="w-full"
-                disabled={isLoading}
-            />
+            {/*<StyledButton*/}
+            {/*    title="Connect Wallet"*/}
+            {/*    onPress={handleWalletLogin}*/}
+            {/*    variant="secondary"*/}
+            {/*    className="w-full"*/}
+            {/*    disabled={isLoading}*/}
+            {/*/>*/}
 
             <Text className="text-sm text-gray-500 text-center mt-6 px-4">
               We'll send you a verification code to confirm your email address

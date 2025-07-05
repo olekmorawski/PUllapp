@@ -46,7 +46,6 @@ export default function OTPScreen() {
 
     try {
       await verifyEmailOTP(enteredOtp);
-      // Authentication success will be handled by the context and navigation will happen automatically
     } catch (error: any) {
       console.error('Error verifying OTP:', error);
       setOtpError('Invalid OTP. Please try again.');
