@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -8,10 +8,11 @@ import {
     SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {SidebarItem} from "@/components/SidebarItem";
+import { SidebarItem } from "@/components/SidebarItem";
+import { dynamicClient } from '@/app/_layout'; // Your Dynamic client import
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.70; // 85% of screen width
+const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.70;
 
 interface SidebarProps {
     isVisible: boolean;
@@ -22,7 +23,7 @@ interface SidebarProps {
     onSettingsPress: () => void;
     onBecomeDriverPress?: () => void;
     onSwitchToDriverViewPress?: () => void;
-    onSwitchToPassengerViewPress?: () => void; // Added for passenger view
+    onSwitchToPassengerViewPress?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = (props) => {
@@ -35,11 +36,53 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
         onSettingsPress,
         onBecomeDriverPress,
         onSwitchToDriverViewPress,
-        onSwitchToPassengerViewPress, // Added for passenger view
+        onSwitchToPassengerViewPress,
     } = props;
 
     const slideAnim = React.useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
     const backdropOpacity = React.useRef(new Animated.Value(0)).current;
+
+    // State for user and wallet information
+    const [userName, setUserName] = useState('User');
+    const [walletAddress, setWalletAddress] = useState('');
+
+    useEffect(() => {
+        // Get authenticated user and wallet information
+        const getWalletInfo = () => {
+            const authenticatedUser = dynamicClient.auth.authenticatedUser;
+
+            if (authenticatedUser) {
+                // Set user name from various possible sources
+                const displayName = authenticatedUser.firstName ||
+                    authenticatedUser.alias ||
+                    authenticatedUser.username ||
+                    'User';
+                setUserName(displayName);
+
+                // Get wallet address from verified credentials
+                if (authenticatedUser.verifiedCredentials && authenticatedUser.verifiedCredentials.length > 0) {
+                    // Get the first wallet address (you can modify this logic as needed)
+                    const walletCredential = authenticatedUser.verifiedCredentials.find(
+                        credential => credential.format === 'blockchain' && credential.address
+                    );
+
+                    if (walletCredential?.address) {
+                        setWalletAddress(walletCredential.address);
+                    }
+                }
+            }
+        };
+
+        if (isVisible) {
+            getWalletInfo();
+        }
+    }, [isVisible]);
+
+    const formatWalletAddress = (address: string) => {
+        if (!address) return '';
+        if (address.length <= 10) return address;
+        return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    };
 
     useEffect(() => {
         if (isVisible) {
@@ -156,7 +199,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
                                 justifyContent: 'center',
                                 marginRight: 12,
                             }}>
-                                <Ionicons name="person" size={24} color="white" />
+                                <Ionicons name="wallet" size={24} color="white" />
                             </View>
                             <View>
                                 <Text style={{
@@ -164,14 +207,15 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
                                     fontWeight: '600',
                                     color: '#333',
                                 }}>
-                                    John Doe
+                                    {userName}
                                 </Text>
                                 <Text style={{
                                     fontSize: 14,
                                     color: '#666',
                                     marginTop: 2,
+                                    fontFamily: 'monospace', // Better for addresses
                                 }}>
-                                    john.doe@email.com
+                                    {walletAddress ? formatWalletAddress(walletAddress) : 'No wallet connected'}
                                 </Text>
                             </View>
                         </View>
@@ -187,7 +231,6 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Menu Items */}
                     <View style={{ flex: 1, paddingTop: 8 }}>
                         <SidebarItem
                             icon="person-outline"
@@ -216,56 +259,55 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
                         }} />
 
                         {/* Become a Driver Button */}
-                        {onBecomeDriverPress && ( // Conditionally render based on prop presence
+                        {onBecomeDriverPress && (
                             <TouchableOpacity
                                 onPress={handleBecomeDriver}
                                 style={{
                                     marginHorizontal: 20,
-                                marginVertical: 8,
-                                backgroundColor: '#007AFF',
-                                borderRadius: 12,
-                                padding: 16,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                shadowColor: '#007AFF',
-                                shadowOffset: {
-                                    width: 0,
-                                    height: 2,
-                                },
-                                shadowOpacity: 0.2,
-                                shadowRadius: 4,
-                                elevation: 4,
-                            }}
-                        >
-                            <View style={{
-                                backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                                borderRadius: 20,
-                                padding: 8,
-                                marginRight: 12,
-                            }}>
-                                <Ionicons name="car-outline" size={20} color="white" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{
-                                    color: 'white',
-                                    fontSize: 16,
-                                    fontWeight: '600',
+                                    marginVertical: 8,
+                                    backgroundColor: '#007AFF',
+                                    borderRadius: 12,
+                                    padding: 16,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    shadowColor: '#007AFF',
+                                    shadowOffset: {
+                                        width: 0,
+                                        height: 2,
+                                    },
+                                    shadowOpacity: 0.2,
+                                    shadowRadius: 4,
+                                    elevation: 4,
+                                }}
+                            >
+                                <View style={{
+                                    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                                    borderRadius: 20,
+                                    padding: 8,
+                                    marginRight: 12,
                                 }}>
-                                    Become a Driver
-                                </Text>
-                                <Text style={{
-                                    color: 'rgba(255, 255, 255, 0.8)',
-                                    fontSize: 12,
-                                    marginTop: 2,
-                                }}>
-                                    Start earning with your car
-                                </Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={20} color="white" />
-                        </TouchableOpacity>
+                                    <Ionicons name="car-outline" size={20} color="white" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        color: 'white',
+                                        fontSize: 16,
+                                        fontWeight: '600',
+                                    }}>
+                                        Become a Driver
+                                    </Text>
+                                    <Text style={{
+                                        color: 'rgba(255, 255, 255, 0.8)',
+                                        fontSize: 12,
+                                        marginTop: 2,
+                                    }}>
+                                        Start earning with your car
+                                    </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={20} color="white" />
+                            </TouchableOpacity>
                         )}
 
-                        {/* Switch View Button */}
                         {onSwitchToDriverViewPress && (
                             <SidebarItem
                                 icon="swap-horizontal-outline"
