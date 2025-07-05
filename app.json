@@ -12,7 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.olekmorawski.PullUp",
       "config": {
-        "googleMapsApiKey": "AIzaSyD7Z9TTNdp6ko6N2w5EqMLoqdCsB_mlBRk"
+        "googleMapsApiKey": "AIzaSyAwrnA0SWKH89KLa-v2RGfEx7akD8nX48c"
       },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show nearby rides and services.",
@@ -28,7 +28,7 @@
       "package": "com.olekmorawski.PullUp",
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyD7Z9TTNdp6ko6N2w5EqMLoqdCsB_mlBRk"
+          "apiKey": "AIzaSyAwrnA0SWKH89KLa-v2RGfEx7akD8nX48c"
         }
       }
     },
@@ -53,7 +53,16 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxMapsImpl": "mapbox",
+          "RNMapboxMapsAccessToken": "pk.eyJ1Ijoib2xla21vcmF3c2tpIiwiYSI6ImNtY21jaXZnYTBnaTAybHMzMWp4cnB2MmYifQ.gmAgP14PfVyDhelFkHeFsg"
+        }
+      ],
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
