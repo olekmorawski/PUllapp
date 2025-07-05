@@ -3,7 +3,7 @@ import { StatusBar, Alert, View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Header } from '@/components/Header';
-import { Sidebar } from '@/components/Sidebar';
+import { Sidebar } from '@/components/Sidebar/Sidebar';
 import { BottomSheet } from '@/components/BottomSheet/BottomSheet';
 import { DriverBottomSheet } from '@/components/DriverBottomSheet'; // Import DriverBottomSheet
 import { MapboxMap } from '@/components/MapboxMap';
@@ -45,8 +45,6 @@ export default function RideAppInterface() {
     // Define sample ride options
     const sampleRideOptions = [
         { id: 1, type: 'Standard', time: '5 min', suggestedRange: '$10-12', icon: 'car' },
-        { id: 2, type: 'XL', time: '8 min', suggestedRange: '$15-18', icon: 'suv' },
-        { id: 3, type: 'Luxury', time: '6 min', suggestedRange: '$25-30', icon: 'luxury_car' },
     ];
 
     const mapRef = useRef<Mapbox.MapView>(null);

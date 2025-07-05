@@ -116,7 +116,7 @@ export default function LoginScreen() {
             {/*/>*/}
 
             <Text className="text-sm text-gray-500 text-center mt-6 px-4">
-              We'll send you a verification code to confirm your email address
+              We will send you a verification code to confirm your email address
             </Text>
           </View>
         </KeyboardAvoidingView>
