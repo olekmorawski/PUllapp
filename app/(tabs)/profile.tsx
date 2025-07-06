@@ -5,8 +5,8 @@ import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import StyledButton from '@/components/StyledButton';
 
-// Mock User Data
 const mockUser = {
+    username: 'test',
   name: 'Alex Rider',
   email: 'alex.rider@example.com',
   profileImageUrl: 'https://via.placeholder.com/150/007BFF/FFFFFF?Text=AR',
@@ -41,13 +41,14 @@ export default function ProfileScreen() {
             source={{ uri: mockUser.profileImageUrl }}
             className="w-32 h-32 rounded-full mb-4 border-4 border-blue-500"
           />
-          <Text className="text-2xl font-bold text-gray-800">{mockUser.name}</Text>
+            <Text className="text-2xl font-bold text-gray-800">{mockUser.name}</Text>
           <Text className="text-base text-gray-600">{mockUser.email}</Text>
           <Text className="text-sm text-gray-500 mt-1">{mockUser.memberSince}</Text>
         </View>
 
         <View className="w-full space-y-4">
-          <InfoRow label="Full Name" value={mockUser.name} icon="person-outline" />
+            <InfoRow label="Useername" value={mockUser.username} icon="person-outline" />
+            <InfoRow label="Full Name" value={mockUser.name} icon="person-outline" />
           <InfoRow label="Email Address" value={mockUser.email} icon="mail-outline" />
           <InfoRow label="Phone Number" value="(123) 456-7890 (mock)" icon="call-outline" />
         </View>

@@ -64,7 +64,7 @@ export default function SettingsScreen() {
           text: "Log Out",
           onPress: () => {
             console.log('User logging out...');
-            setIsAuthenticated(false); // Set isAuthenticated to false
+            setIsAuthenticated(false);
             router.replace('/(auth)/login');
           },
           style: "destructive"
@@ -90,30 +90,27 @@ export default function SettingsScreen() {
       <ScrollView className="flex-1">
         <Text className="text-xs font-semibold text-gray-500 p-4 pt-6 uppercase">Account</Text>
         <SettingsItem label="Edit Profile" icon="person-outline" onPress={() => router.push('/(tabs)/profile')} />
-        <SettingsItem label="Payment Methods" icon="card-outline" onPress={() => console.log('Navigate to Payment Methods')} />
-        <SettingsItem label="Privacy" icon="shield-checkmark-outline" onPress={() => console.log('Navigate to Privacy Settings')} />
+        <SettingsItem label="Top Up" icon="card-outline" onPress={() => router.push('/(tabs)/top-up')} />
+        <SettingsItem label="Auction Settings" icon="card-outline" onPress={() => router.push('/(tabs)/auction-settings')} />
 
-        <Text className="text-xs font-semibold text-gray-500 p-4 pt-6 uppercase">Preferences</Text>
-        <SettingsItem
-          label="Notifications"
-          icon="notifications-outline"
-          isSwitch
-          switchValue={notificationsEnabled}
-          onSwitchChange={setNotificationsEnabled}
-        />
-        <SettingsItem
-          label="Dark Mode"
-          icon="moon-outline"
-          isSwitch
-          switchValue={darkModeEnabled}
-          onSwitchChange={setDarkModeEnabled}
-        />
-        <SettingsItem label="Language" icon="language-outline" onPress={() => console.log('Navigate to Language Settings')} />
 
-        <Text className="text-xs font-semibold text-gray-500 p-4 pt-6 uppercase">Support & Legal</Text>
-        <SettingsItem label="Help & Support" icon="help-circle-outline" onPress={() => console.log('Navigate to Help & Support')} />
-        <SettingsItem label="Terms of Service" icon="document-text-outline" onPress={() => console.log('Navigate to Terms of Service')} />
-        <SettingsItem label="About" icon="information-circle-outline" onPress={() => console.log('Navigate to About Page')} />
+        {/*<Text className="text-xs font-semibold text-gray-500 p-4 pt-6 uppercase">Preferences</Text>*/}
+        {/*<SettingsItem*/}
+        {/*  label="Notifications"*/}
+        {/*  icon="notifications-outline"*/}
+        {/*  isSwitch*/}
+        {/*  switchValue={notificationsEnabled}*/}
+        {/*  onSwitchChange={setNotificationsEnabled}*/}
+        {/*/>*/}
+        {/*<SettingsItem*/}
+        {/*  label="Dark Mode"*/}
+        {/*  icon="moon-outline"*/}
+        {/*  isSwitch*/}
+        {/*  switchValue={darkModeEnabled}*/}
+        {/*  onSwitchChange={setDarkModeEnabled}*/}
+        {/*/>*/}
+        {/*<SettingsItem label="Language" icon="language-outline" onPress={() => console.log('Navigate to Language Settings')} />*/}
+        {/*<SettingsItem label="Currency" icon="language-outline" onPress={() => console.log('Navigate to Currency Settings')} />*/}
 
         <View className="p-4 mt-6">
           <StyledButton
