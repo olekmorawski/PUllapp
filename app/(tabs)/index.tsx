@@ -276,7 +276,7 @@ export default function RideAppInterface() {
             <Header onMenuPress={handleMenuPress} onNotificationPress={handleNotificationPress} />
 
             {isDriverViewActive ? (
-                <>
+                <View style={{ flex: 1 }}>
                     <MapboxMap
                         mapRef={mapRef}
                         initialRegion={getInitialRegion()} // Or driver-specific region
@@ -291,9 +291,9 @@ export default function RideAppInterface() {
                         isVisible={isDriverViewActive}
                         rideDetails={driverRideDetails}
                     />
-                </>
+                </View>
             ) : (
-                <>
+                <View style={{ flex: 1 }}>
                     <MapboxMap
                         mapRef={mapRef}
                         initialRegion={getInitialRegion()}
@@ -326,7 +326,7 @@ export default function RideAppInterface() {
                         onConfirmRide={handleConfirmRide}
                         onLocationSelect={handleLocationSelect}
                     />
-                </>
+                </View>
             )}
 
             <Sidebar

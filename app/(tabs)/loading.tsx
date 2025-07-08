@@ -76,13 +76,13 @@ const LoadingScreen = () => {
                 <Text className="text-2xl font-bold mb-4 text-gray-800 text-center">{statusText}</Text>
 
                 {driverFound ? (
-                    <>
+                    <View>
                         {/* styles.driverInfo -> className */}
                         <Text className="text-lg text-gray-600 mb-1 text-center">Driver: {driverName}</Text>
                         <Text className="text-lg text-gray-600 mb-1 text-center">Vehicle: {driverVehicle}</Text>
                         {/* styles.etaText -> className */}
                         <Text className="text-xl font-bold text-blue-600 mt-2 mb-5 text-center">Arriving in: {formatTime(eta)}</Text>
-                    </>
+                    </View>
                 ) : (
                     // styles.infoText -> className
                     <Text className="text-base text-gray-500 text-center mb-5">Please wait while we connect you with a nearby driver.</Text>

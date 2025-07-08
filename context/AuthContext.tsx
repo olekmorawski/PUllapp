@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { dynamicClient } from '@/app/_layout';
+import { dynamicClient } from '@/lib/dynamicClient';
 import {UserProfile} from "@dynamic-labs/types";
 interface AuthContextType {
   isAuthenticated: boolean;
