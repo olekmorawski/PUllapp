@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import {
     View,
     Animated,
     Dimensions,
     SafeAreaView,
 } from 'react-native';
-import { dynamicClient } from '@/app/_layout';
+import { useAuthContext } from "@/context/AuthContext";
 import {SidebarHeader} from "@/components/Sidebar/components/SidebarHeader";
 import {SidebarContent} from "@/components/Sidebar/components/SidebarContent";
 import {SidebarFooter} from "@/components/Sidebar/components/SidebarFooter";
@@ -41,39 +41,9 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
         onSignOut,
     } = props;
 
+    const { user, signOut } = useAuthContext();
     const slideAnim = React.useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
     const backdropOpacity = React.useRef(new Animated.Value(0)).current;
-
-    const [userName, setUserName] = useState('User');
-    const [walletAddress, setWalletAddress] = useState('');
-
-    useEffect(() => {
-        const getWalletInfo = () => {
-            const authenticatedUser = dynamicClient.auth.authenticatedUser;
-
-            if (authenticatedUser) {
-                const displayName = authenticatedUser.firstName ||
-                    authenticatedUser.alias ||
-                    authenticatedUser.username ||
-                    'User';
-                setUserName(displayName);
-
-                if (authenticatedUser.verifiedCredentials && authenticatedUser.verifiedCredentials.length > 0) {
-                    const walletCredential = authenticatedUser.verifiedCredentials.find(
-                        credential => credential.format === 'blockchain' && credential.address
-                    );
-
-                    if (walletCredential?.address) {
-                        setWalletAddress(walletCredential.address);
-                    }
-                }
-            }
-        };
-
-        if (isVisible) {
-            getWalletInfo();
-        }
-    }, [isVisible]);
 
     useEffect(() => {
         if (isVisible) {
@@ -104,6 +74,15 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
             ]).start();
         }
     }, [isVisible]);
+
+    const handleSignOut = async () => {
+        try {
+            await signOut();
+            onSignOut?.();
+        } catch (error) {
+            console.error('Error signing out:', error);
+        }
+    };
 
     if (!isVisible) return null;
 
@@ -142,8 +121,8 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
             >
                 <SafeAreaView style={{ flex: 1 }}>
                     <SidebarHeader
-                        userName={userName}
-                        walletAddress={walletAddress}
+                        userName={user?.username || 'User'}
+                        walletAddress={user?.walletAddress || ''}
                         onClose={onClose}
                     />
 
@@ -157,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
                         onClose={onClose}
                     />
 
-                    <SidebarFooter onSignOut={onSignOut} />
+                    <SidebarFooter onSignOut={handleSignOut} />
                 </SafeAreaView>
             </Animated.View>
         </View>
