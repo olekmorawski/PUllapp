@@ -2,8 +2,8 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { dynamicClient } from '@/lib/dynamicClient';
 import { UserProfile } from "@dynamic-labs/types";
 
-// Backend User interface
-export interface User {
+// Backend User interface (for verification)
+export interface BackendUser {
   id: string;
   email: string;
   username: string;
@@ -16,7 +16,9 @@ interface AuthContextType {
   isAuthenticated: boolean;
   setIsAuthenticated: React.Dispatch<React.SetStateAction<boolean>>;
   userEmail?: string;
-  user: User | null;
+  userName: string;
+  walletAddress: string; // Always from Dynamic
+  backendUser: BackendUser | null; // For verification/identity
   sendEmailOTP: (email: string) => Promise<void>;
   verifyEmailOTP: (otp: string) => Promise<void>;
   resendEmailOTP: () => Promise<void>;
@@ -34,148 +36,121 @@ const BACKEND_URL = 'http://localhost:3001';
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
-  const [user, setUser] = useState<User | null>(null);
+  const [userName, setUserName] = useState<string>('User');
+  const [walletAddress, setWalletAddress] = useState<string>(''); // From Dynamic
+  const [backendUser, setBackendUser] = useState<BackendUser | null>(null); // For verification
   const [isLoading, setIsLoading] = useState(false);
 
-  // Backend API functions
-  const checkUserExists = async (email: string): Promise<{ exists: boolean; user?: User }> => {
-    console.log('🔍 Checking if user exists for email:', email);
-
-    const response = await fetch(`${BACKEND_URL}/api/users/check`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to check user');
-    }
-
-    const data = await response.json();
-    console.log('✅ User check response:', data);
-
-    if (data.error) {
-      throw new Error(data.error);
-    }
-
-    return data;
+  const createUsernameFromEmail = (email: string): string => {
+    const username = email.split('@')[0];
+    return username.replace(/[^a-zA-Z0-9._]/g, '').toLowerCase();
   };
 
-  const createUser = async (email: string, walletAddress?: string): Promise<User> => {
-    console.log('🆕 Creating user with email:', email, 'wallet:', walletAddress);
+  // Backend functions (for verification only)
+  const verifyUserInBackend = async (email: string, walletAddress?: string) => {
+    try {
+      console.log('🔍 Verifying user in backend:', email, 'wallet:', walletAddress);
 
-    const response = await fetch(`${BACKEND_URL}/api/users/create`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, walletAddress }),
-    });
+      // Check if user exists
+      const checkResponse = await fetch(`${BACKEND_URL}/api/users/check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
 
-    if (!response.ok) {
-      throw new Error('Failed to create user');
+      if (!checkResponse.ok) {
+        console.log('⚠️ Backend not available, continuing without verification');
+        return null;
+      }
+
+      const checkData = await checkResponse.json();
+
+      if (checkData.exists && checkData.user) {
+        console.log('✅ User exists in backend');
+
+        // Update wallet address if different
+        if (walletAddress && checkData.user.walletAddress !== walletAddress) {
+          console.log('🔄 Updating wallet address in backend');
+          const updateResponse = await fetch(`${BACKEND_URL}/api/users/update`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, walletAddress }),
+          });
+
+          if (updateResponse.ok) {
+            const updateData = await updateResponse.json();
+            return updateData.user;
+          }
+        }
+
+        return checkData.user;
+      } else {
+        console.log('🆕 Creating new user in backend');
+        // Create new user
+        const createResponse = await fetch(`${BACKEND_URL}/api/users/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, walletAddress }),
+        });
+
+        if (createResponse.ok) {
+          const createData = await createResponse.json();
+          return createData.user;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.log('⚠️ Backend verification failed, continuing without it:', error);
+      return null;
     }
-
-    const data = await response.json();
-    console.log('✅ User created:', data);
-
-    if (data.error) {
-      throw new Error(data.error);
-    }
-
-    return data.user;
   };
 
-  const updateUser = async (email: string, walletAddress?: string): Promise<User> => {
-    console.log('🔄 Updating user with email:', email, 'wallet:', walletAddress);
+  const extractDynamicData = (authenticatedUser: UserProfile) => {
+    console.log('🚀 Extracting user data from Dynamic');
 
-    const response = await fetch(`${BACKEND_URL}/api/users/update`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, walletAddress }),
-    });
+    const email = authenticatedUser.email || '';
+    const username = email ? createUsernameFromEmail(email) : 'User';
 
-    if (!response.ok) {
-      throw new Error('Failed to update user');
+    // Get the most recently used wallet address from Dynamic
+    let walletAddr = '';
+    if (authenticatedUser.verifiedCredentials) {
+      const walletCredentials = authenticatedUser.verifiedCredentials.filter(
+          credential => credential.format === 'blockchain' && credential.address
+      );
+
+      if (walletCredentials.length > 0) {
+        // Sort by lastSelectedAt to get the most recent
+        const sortedWallets = walletCredentials.sort((a, b) => {
+          const dateA = new Date(a.lastSelectedAt || 0).getTime();
+          const dateB = new Date(b.lastSelectedAt || 0).getTime();
+          return dateB - dateA;
+        });
+
+        walletAddr = sortedWallets[0].address || '';
+        console.log('💰 Using wallet address from Dynamic:', walletAddr);
+      }
     }
 
-    const data = await response.json();
-    console.log('✅ User updated:', data);
-
-    if (data.error) {
-      throw new Error(data.error);
-    }
-
-    return data.user;
+    return { email, username, walletAddr };
   };
 
   const handleUserLogin = async (authenticatedUser: UserProfile) => {
-    try {
-      console.log('🚀 Handling user login for:', authenticatedUser);
+    const { email, username, walletAddr } = extractDynamicData(authenticatedUser);
 
-      const email = authenticatedUser.email;
-      if (!email) {
-        console.log('❌ No email found in authenticated user');
-        return;
-      }
+    // Set Dynamic data immediately (for UI)
+    setUserEmail(email);
+    setUserName(username);
+    setWalletAddress(walletAddr);
 
-      console.log('📧 User email:', email);
+    // Verify in backend (for identity confirmation) - don't block UI
+    const backendUserData = await verifyUserInBackend(email, walletAddr);
+    setBackendUser(backendUserData);
 
-      // Get wallet address from Dynamic if available
-      let walletAddress;
-      console.log('🔍 Checking for verified credentials:', authenticatedUser.verifiedCredentials);
-
-      if (authenticatedUser.verifiedCredentials) {
-        console.log('📋 All verified credentials:', authenticatedUser.verifiedCredentials);
-
-        const walletCredential = authenticatedUser.verifiedCredentials.find(
-            credential => {
-              console.log('🔍 Checking credential:', credential);
-              return credential.format === 'blockchain' && credential.address;
-            }
-        );
-
-        if (walletCredential) {
-          walletAddress = walletCredential.address;
-          console.log('💰 Found wallet address:', walletAddress);
-        } else {
-          console.log('❌ No wallet credential found');
-        }
-      } else {
-        console.log('❌ No verified credentials found');
-      }
-
-      // Check if user exists in backend
-      const { exists, user: existingUser } = await checkUserExists(email);
-
-      if (exists && existingUser) {
-        console.log('👤 User exists, checking wallet address...');
-        console.log('🔍 Existing wallet:', existingUser.walletAddress);
-        console.log('🔍 New wallet:', walletAddress);
-
-        // User exists, update wallet address if needed
-        if (walletAddress && existingUser.walletAddress !== walletAddress) {
-          console.log('🔄 Wallet address changed, updating...');
-          const updatedUser = await updateUser(email, walletAddress);
-          setUser(updatedUser);
-        } else {
-          console.log('✅ Using existing user data');
-          setUser(existingUser);
-        }
-      } else {
-        console.log('🆕 User doesn\'t exist, creating new user...');
-        // User doesn't exist, create new user
-        const newUser = await createUser(email, walletAddress);
-        setUser(newUser);
-      }
-
-    } catch (error) {
-      console.error('❌ Error handling user login:', error);
-      // Don't throw here to avoid breaking the auth flow
+    if (backendUserData) {
+      console.log('✅ User verified in backend:', backendUserData.id);
+    } else {
+      console.log('⚠️ Continuing without backend verification');
     }
   };
 
@@ -184,9 +159,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const handleAuthSuccess = async (authenticatedUser: UserProfile) => {
       console.log('🎉 Auth success event triggered');
       setIsAuthenticated(true);
-      setUserEmail(undefined); // Clear OTP email if any
+      setUserEmail(undefined);
 
-      // Handle user creation/update in backend
       await handleUserLogin(authenticatedUser);
     };
 
@@ -194,7 +168,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.log('👋 User logged out');
       setIsAuthenticated(false);
       setUserEmail(undefined);
-      setUser(null); // Clear user data
+      setUserName('User');
+      setWalletAddress('');
+      setBackendUser(null);
     };
 
     // Listen for authentication events from the Dynamic client
@@ -206,7 +182,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.log('🔍 Checking initial auth state...');
       const authenticatedUser = dynamicClient.auth.authenticatedUser;
       if (authenticatedUser) {
-        console.log('✅ User already authenticated:', authenticatedUser);
+        console.log('✅ User already authenticated');
         setIsAuthenticated(true);
         await handleUserLogin(authenticatedUser);
       } else {
@@ -225,7 +201,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const sendEmailOTP = async (email: string) => {
     setIsLoading(true);
     try {
-      // Use Dynamic's email OTP system
       await dynamicClient.auth.email.sendOTP(email);
       setUserEmail(email);
     } catch (error) {
@@ -239,9 +214,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const verifyEmailOTP = async (otp: string) => {
     setIsLoading(true);
     try {
-      // Use Dynamic's email OTP verification
       await dynamicClient.auth.email.verifyOTP(otp);
-      // Authentication success will be handled by the event listener above
     } catch (error) {
       console.error('Failed to verify OTP:', error);
       throw error;
@@ -269,7 +242,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     try {
       await dynamicClient.auth.logout();
-      // The logout event listener will handle state cleanup
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;
@@ -286,19 +258,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     dynamicClient.ui.auth.hide();
   };
 
-  // Debug: Log current user state
+  // Debug: Log current state
   useEffect(() => {
-    console.log('👤 Current user state:', user);
-    if (user) {
-      console.log('💰 Current wallet address:', user.walletAddress);
-    }
-  }, [user]);
+    console.log('👤 Auth State - Wallet (Dynamic):', walletAddress, 'Backend User:', backendUser?.id);
+  }, [walletAddress, backendUser]);
 
   const contextValue: AuthContextType = {
     isAuthenticated,
     setIsAuthenticated,
     userEmail,
-    user,
+    userName,
+    walletAddress, // Always from Dynamic
+    backendUser, // For verification
     sendEmailOTP,
     verifyEmailOTP,
     resendEmailOTP,
@@ -319,4 +290,4 @@ export const useAuthContext = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuthContext must be used within AuthProvider');
   return ctx;
-};
+}
