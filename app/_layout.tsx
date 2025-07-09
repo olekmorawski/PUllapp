@@ -9,6 +9,8 @@ import React, { useEffect } from 'react';
 import { useRouter, useSegments, Stack } from 'expo-router';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
 import { dynamicClient } from '@/lib/dynamicClient';
+import {queryClient} from "@/lib/queryClient";
+import {QueryClientProvider} from "@tanstack/react-query";
 
 function RootNavigation() {
   const colorScheme = useColorScheme();
@@ -51,8 +53,10 @@ function RootNavigation() {
 
 export default function RootLayout() {
   return (
+      <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <RootNavigation />
       </AuthProvider>
+        </QueryClientProvider>
   );
 }
