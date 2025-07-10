@@ -37,20 +37,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const isLoading = dynamicAuth.isLoading || userVerification.isLoading;
 
   const userEmail = dynamicAuth.dynamicUser?.email;
-  const userName = dynamicAuth.dynamicUser?.username || 'User';
-  const walletAddress = dynamicAuth.dynamicUser?.walletAddress || '';
 
-  React.useEffect(() => {
-    if (dynamicAuth.dynamicUser) {
-      console.log('👤 Auth State Update:');
-      console.log('📧 Email:', dynamicAuth.dynamicUser.email);
-      console.log('👤 Username:', dynamicAuth.dynamicUser.username);
-      console.log('💰 Wallet (Dynamic):', dynamicAuth.dynamicUser.walletAddress);
-      console.log('🔐 Backend User ID:', userVerification.backendUser?.id);
-      console.log('✅ Verified:', userVerification.isVerified);
-      console.log('📊 Verification Status:', userVerification.verificationStatus);
-    }
-  }, [dynamicAuth.dynamicUser, userVerification.backendUser, userVerification.isVerified, userVerification.verificationStatus]);
+  const userName = userVerification.backendUser?.username ||
+      'User';
+
+  const walletAddress = dynamicAuth.dynamicUser?.walletAddress || '';
 
   const contextValue: AuthContextType = {
     isAuthenticated: dynamicAuth.isAuthenticated,
@@ -66,7 +57,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     showAuthFlow: dynamicAuth.showAuthFlow,
     hideAuthFlow: dynamicAuth.hideAuthFlow,
 
-    // Legacy compatibility
+    // Legacy compatibility - now using backend username as priority
     userEmail,
     userName,
     walletAddress,

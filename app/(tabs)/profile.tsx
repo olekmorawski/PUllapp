@@ -8,14 +8,15 @@ import { useAuthContext } from '@/context/AuthContext';
 
 export default function ProfileScreen() {
     const router = useRouter();
-    const { dynamicUser, backendUser, isVerified, walletAddress, isDriver } = useAuthContext();
+    const { dynamicUser, backendUser, isVerified, walletAddress, isDriver, userName } = useAuthContext();
 
     const handleEditProfile = () => {
-        console.log('Navigate to Edit Profile');
+        router.push('/edit');
     };
 
-    const displayName = dynamicUser?.username ?
-        dynamicUser.username.charAt(0).toUpperCase() + dynamicUser.username.slice(1) :
+    // Use userName from context (which now prioritizes backend username)
+    const displayName = userName && userName !== 'User' ?
+        userName.charAt(0).toUpperCase() + userName.slice(1) :
         'User';
 
     const profileImageUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&size=150&background=007BFF&color=ffffff&bold=true`;
@@ -84,7 +85,7 @@ export default function ProfileScreen() {
                 <View className="w-full space-y-4">
                     <InfoRow
                         label="Username"
-                        value={dynamicUser?.username || 'Not set'}
+                        value={userName || 'Not set'}
                         icon="person-outline"
                     />
 
@@ -105,7 +106,7 @@ export default function ProfileScreen() {
                         <InfoRow
                             label="Is Driver?"
                             value={isDriver ? 'Yes' : 'No'}
-                            icon="wallet-outline"
+                            icon="car-outline"
                         />
                     )}
 
