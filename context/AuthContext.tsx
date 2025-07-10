@@ -9,6 +9,7 @@ interface AuthContextType {
   dynamicUser: DynamicUserData | null;
   backendUser: BackendUser | null;
   isVerified: boolean;
+  isDriver: boolean;
   verificationStatus: 'idle' | 'checking' | 'verified' | 'failed';
   sendEmailOTP: (email: string) => Promise<void>;
   verifyEmailOTP: (otp: string) => Promise<void>;
