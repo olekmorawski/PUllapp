@@ -45,18 +45,6 @@ export const Sidebar: React.FC<SidebarProps> = (props) => {
     const slideAnim = React.useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
     const backdropOpacity = React.useRef(new Animated.Value(0)).current;
 
-    // Debug: Log user data when sidebar is visible
-    useEffect(() => {
-        if (isVisible) {
-            console.log('🎯 Sidebar opened:');
-            console.log('📧 Email:', userEmail);
-            console.log('👤 Username:', userName);
-            console.log('💰 Wallet (Dynamic):', walletAddress);
-            console.log('🔐 Backend User ID:', backendUser?.id);
-            console.log('✅ Verified:', backendUser ? 'Yes' : 'No');
-        }
-    }, [isVisible, userName, userEmail, walletAddress, backendUser]);
-
     useEffect(() => {
         if (isVisible) {
             Animated.parallel([

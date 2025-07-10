@@ -1,31 +1,21 @@
-// context/AuthContext.tsx
 import React, { createContext, useContext, ReactNode } from 'react';
 import { useDynamicAuth, DynamicUserData } from '@/hooks/useDynamicAuth';
 import { useUserVerification } from '@/hooks/useUserVerification';
-import { BackendUser } from '@/hooks/api/useUserAPI';
+import {BackendUser} from "@/api/userAPI";
 
 interface AuthContextType {
-  // Authentication state
   isAuthenticated: boolean;
   isLoading: boolean;
-
-  // User data
   dynamicUser: DynamicUserData | null;
   backendUser: BackendUser | null;
-
-  // Verification status
   isVerified: boolean;
   verificationStatus: 'idle' | 'checking' | 'verified' | 'failed';
-
-  // Auth methods
   sendEmailOTP: (email: string) => Promise<void>;
   verifyEmailOTP: (otp: string) => Promise<void>;
   resendEmailOTP: () => Promise<void>;
   signOut: () => Promise<void>;
   showAuthFlow: () => void;
   hideAuthFlow: () => void;
-
-  // Legacy compatibility (for existing components)
   userEmail?: string;
   userName: string;
   walletAddress: string;
@@ -35,7 +25,6 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Use custom hooks
   const dynamicAuth = useDynamicAuth();
 
   const userVerification = useUserVerification({
@@ -44,15 +33,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     enabled: dynamicAuth.isAuthenticated && !!dynamicAuth.dynamicUser,
   });
 
-  // Combined loading state
   const isLoading = dynamicAuth.isLoading || userVerification.isLoading;
 
-  // Legacy compatibility values
   const userEmail = dynamicAuth.dynamicUser?.email;
   const userName = dynamicAuth.dynamicUser?.username || 'User';
   const walletAddress = dynamicAuth.dynamicUser?.walletAddress || '';
 
-  // Debug logging
   React.useEffect(() => {
     if (dynamicAuth.dynamicUser) {
       console.log('👤 Auth State Update:');
@@ -66,19 +52,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [dynamicAuth.dynamicUser, userVerification.backendUser, userVerification.isVerified, userVerification.verificationStatus]);
 
   const contextValue: AuthContextType = {
-    // Authentication state
     isAuthenticated: dynamicAuth.isAuthenticated,
     isLoading,
-
-    // User data
     dynamicUser: dynamicAuth.dynamicUser,
     backendUser: userVerification.backendUser,
-
-    // Verification status
     isVerified: userVerification.isVerified,
     verificationStatus: userVerification.verificationStatus,
-
-    // Auth methods
     sendEmailOTP: dynamicAuth.sendEmailOTP,
     verifyEmailOTP: dynamicAuth.verifyEmailOTP,
     resendEmailOTP: dynamicAuth.resendEmailOTP,

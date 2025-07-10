@@ -1,6 +1,8 @@
-// hooks/useUserVerification.ts
 import { useEffect, useState, useRef } from 'react';
-import { useCheckUser, useCreateUser, useUpdateUser, BackendUser } from './api/useUserAPI';
+import { useCheckUser} from "@/hooks/user/useCheckUser";
+import {useCreateUser} from "@/hooks/user/useCreateUser";
+import {useUpdateUser} from "@/hooks/user/useUpdateUser";
+import {CreateUserResponse, UpdateUserResponse, BackendUser} from "@/api/userAPI";
 
 interface UseUserVerificationProps {
     email: string;
@@ -16,10 +18,37 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
     const processedUser = useRef<string | null>(null);
     const isProcessing = useRef(false);
 
-    // Queries and mutations
-    const checkUserQuery = useCheckUser(email, enabled);
-    const createUserMutation = useCreateUser();
-    const updateUserMutation = useUpdateUser();
+    // Individual hooks
+    const checkUserQuery = useCheckUser(email, { enabled });
+
+    const createUser = useCreateUser({
+        onSuccess: (data: CreateUserResponse) => {
+            console.log('✅ User created successfully:', data.user.id);
+            setBackendUser(data.user);
+            setVerificationStatus('verified');
+            isProcessing.current = false;
+        },
+        onError: (error: Error) => {
+            console.error('❌ Failed to create user:', error);
+            setVerificationStatus('failed');
+            setBackendUser(null);
+            isProcessing.current = false;
+        },
+    });
+
+    const updateUser = useUpdateUser({
+        onSuccess: (data: UpdateUserResponse) => {
+            console.log('✅ User updated successfully:', data.user.id);
+            setBackendUser(data.user);
+            setVerificationStatus('verified');
+            isProcessing.current = false;
+        },
+        onError: (error: Error) => {
+            console.error('❌ Failed to update user:', error);
+            setVerificationStatus('failed');
+            isProcessing.current = false;
+        },
+    });
 
     // Handle user verification logic
     useEffect(() => {
@@ -41,28 +70,15 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
                     // Update wallet address if different
                     if (walletAddress && existingUser.walletAddress !== walletAddress) {
                         console.log('🔄 Updating wallet address in backend');
-
-                        const result = await updateUserMutation.mutateAsync({
-                            email,
-                            walletAddress,
-                        });
-
-                        setBackendUser(result.user);
+                        updateUser.mutate({ email, walletAddress });
                     } else {
                         setBackendUser(existingUser);
+                        setVerificationStatus('verified');
+                        isProcessing.current = false;
                     }
-
-                    setVerificationStatus('verified');
                 } else {
                     console.log('🆕 Creating new user in backend');
-
-                    const result = await createUserMutation.mutateAsync({
-                        email,
-                        walletAddress,
-                    });
-
-                    setBackendUser(result.user);
-                    setVerificationStatus('verified');
+                    createUser.mutate({ email, walletAddress });
                 }
 
                 // Mark this user as processed
@@ -71,7 +87,6 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
                 console.log('⚠️ Backend verification failed:', error);
                 setVerificationStatus('failed');
                 setBackendUser(null);
-            } finally {
                 isProcessing.current = false;
             }
         };
@@ -81,7 +96,9 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
         enabled,
         email,
         walletAddress,
-        checkUserQuery.data?.exists, // Only depend on exists flag, not the whole data object
+        checkUserQuery.data?.exists, // Only depend on exists flag
+        createUser,
+        updateUser,
     ]);
 
     // Update verification status based on query state
@@ -90,11 +107,12 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
             setVerificationStatus('checking');
         } else if (checkUserQuery.isError) {
             setVerificationStatus('failed');
+            isProcessing.current = false;
         }
     }, [checkUserQuery.isLoading, checkUserQuery.isError]);
 
     const isVerified = verificationStatus === 'verified' && !!backendUser;
-    const isLoading = verificationStatus === 'checking' || checkUserQuery.isLoading;
+    const isLoading = verificationStatus === 'checking' || checkUserQuery.isLoading || createUser.isPending || updateUser.isPending;
     const hasError = verificationStatus === 'failed' || checkUserQuery.isError;
 
     return {
@@ -103,8 +121,8 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
         isLoading,
         hasError,
         verificationStatus,
-        // Expose mutations for manual operations if needed
-        createUser: createUserMutation.mutateAsync,
-        updateUser: updateUserMutation.mutateAsync,
+        // Expose individual hook methods for manual operations if needed
+        createUserManually: createUser.mutate,
+        updateUserManually: updateUser.mutate,
     };
 };
