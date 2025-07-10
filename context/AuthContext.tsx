@@ -63,7 +63,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.log('✅ Verified:', userVerification.isVerified);
       console.log('📊 Verification Status:', userVerification.verificationStatus);
     }
-  }, [dynamicAuth.dynamicUser, userVerification.backendUser, userVerification.verificationStatus]);
+  }, [dynamicAuth.dynamicUser, userVerification.backendUser, userVerification.isVerified, userVerification.verificationStatus]);
 
   const contextValue: AuthContextType = {
     // Authentication state
