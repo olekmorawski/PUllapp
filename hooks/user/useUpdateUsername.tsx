@@ -17,36 +17,36 @@ export const useUsernameUpdate = (options: UseUsernameUpdateOptions = {}) => {
     const queryClient = useQueryClient();
 
     const updateUser = useUpdateUser({
-        onSuccess: (data, variables) => {
+        onSuccess: async (data, variables) => { // Made async
             console.log('Username updated successfully:', data.user.username);
 
             // CRITICAL: Invalidate the useCheckUser query that useUserVerification depends on
             if (dynamicUser?.email) {
                 // This is the key - invalidate the check user query
-                queryClient.invalidateQueries({
+                await queryClient.invalidateQueries({ // Added await
                     queryKey: userQueryKeys.check(dynamicUser.email)
                 });
 
                 // Also invalidate other user queries for good measure
-                queryClient.invalidateQueries({
+                await queryClient.invalidateQueries({ // Added await
                     queryKey: userQueryKeys.userByEmail(dynamicUser.email)
                 });
 
                 if (backendUser?.id) {
-                    queryClient.invalidateQueries({
+                    await queryClient.invalidateQueries({ // Added await
                         queryKey: userQueryKeys.user(backendUser.id)
                     });
                 }
+
+                // Then refetch and await its completion
+                // This refetch is crucial for AuthContext via useUserVerification
+                await queryClient.refetchQueries({ // Added await
+                    queryKey: userQueryKeys.check(dynamicUser.email),
+                    exact: true
+                });
             }
 
-            // Force refetch after a small delay to ensure invalidation is processed
-            setTimeout(() => {
-                if (dynamicUser?.email) {
-                    queryClient.refetchQueries({
-                        queryKey: userQueryKeys.check(dynamicUser.email)
-                    });
-                }
-            }, 100);
+            // setTimeout removed
 
             options.onSuccess?.(variables.username || '');
         },

@@ -14,11 +14,9 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
     const [backendUser, setBackendUser] = useState<BackendUser | null>(null);
     const [verificationStatus, setVerificationStatus] = useState<'idle' | 'checking' | 'verified' | 'failed'>('idle');
 
-    // Track if we've already processed this user to prevent infinite loops
     const processedUser = useRef<string | null>(null);
     const isProcessing = useRef(false);
 
-    // Individual hooks
     const checkUserQuery = useCheckUser(email, { enabled });
 
     const createUser = useCreateUser({
@@ -50,29 +48,34 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
         },
     });
 
-    // Handle user verification logic
     useEffect(() => {
         if (!enabled || !email || !checkUserQuery.data || isProcessing.current) return;
 
-        // Prevent processing the same user multiple times
         const userKey = `${email}-${walletAddress}`;
-        if (processedUser.current === userKey) return;
 
         const handleVerification = async () => {
+
+            if (processedUser.current === userKey && backendUser === checkUserQuery.data.user) {
+            }
+
             isProcessing.current = true;
             setVerificationStatus('checking');
 
             try {
                 if (checkUserQuery.data.exists && checkUserQuery.data.user) {
-                    console.log('✅ User exists in backend');
+                    console.log('✅ User exists in backend (Effect re-run due to data change)');
                     const existingUser = checkUserQuery.data.user;
 
-                    // Update wallet address if different
+                    if (backendUser?.username !== existingUser.username || backendUser?.walletAddress !== existingUser.walletAddress) {
+                        setBackendUser(existingUser);
+                    } else if (!backendUser) {
+                        setBackendUser(existingUser);
+                    }
+
                     if (walletAddress && existingUser.walletAddress !== walletAddress) {
                         console.log('🔄 Updating wallet address in backend');
-                        updateUser.mutate({ email, walletAddress });
+                        updateUser.mutate({ email, walletAddress, username: existingUser.username });
                     } else {
-                        setBackendUser(existingUser);
                         setVerificationStatus('verified');
                         isProcessing.current = false;
                     }
@@ -81,7 +84,6 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
                     createUser.mutate({ email, walletAddress });
                 }
 
-                // Mark this user as processed
                 processedUser.current = userKey;
             } catch (error) {
                 console.log('⚠️ Backend verification failed:', error);
@@ -96,12 +98,12 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
         enabled,
         email,
         walletAddress,
-        checkUserQuery.data?.exists, // Only depend on exists flag
+        checkUserQuery.data,
         createUser,
         updateUser,
+        backendUser
     ]);
 
-    // Update verification status based on query state
     useEffect(() => {
         if (checkUserQuery.isLoading) {
             setVerificationStatus('checking');
@@ -121,8 +123,5 @@ export const useUserVerification = ({ email, walletAddress, enabled }: UseUserVe
         isLoading,
         hasError,
         verificationStatus,
-        // Expose individual hook methods for manual operations if needed
-        createUserManually: createUser.mutate,
-        updateUserManually: updateUser.mutate,
     };
 };
