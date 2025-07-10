@@ -1,6 +1,8 @@
 import * as Location from 'expo-location';
 
 export interface RideOption {
+    name: string;
+    price: string;
     id: number;
     type: string;
     time: string;

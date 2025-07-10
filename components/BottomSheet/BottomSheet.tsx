@@ -1,3 +1,5 @@
+// Update your BottomSheet component to integrate the useCreateRide hook
+
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
     View,
@@ -18,7 +20,7 @@ import {usePlacesSearch} from "@/hooks/Location/usePlacesSearch";
 import {useRecentSearches} from "@/hooks/Location/useRecentSearches";
 import {useFavoriteLocations} from "@/hooks/Location/useFavouriteLocations";
 import {useReverseGeocode} from "@/hooks/Location/useReverseGeocode";
-
+import {useCreateRide} from "@/hooks/useCreateRide";
 import {BottomSheetHeader} from "@/components/BottomSheet/components/BottomSheetHeader";
 import {LocationInputs} from "@/components/BottomSheet/components/LocationInputs";
 import {SearchResults} from "@/components/BottomSheet/components/SearchResults";
@@ -88,6 +90,41 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     } = useFavoriteLocations();
 
     const { reverseGeocode } = useReverseGeocode();
+
+    // Add the create ride hook
+    const createRide = useCreateRide({
+        onSuccess: (data) => {
+            Alert.alert(
+                'Ride Created!',
+                `Your ride has been created successfully. Ride ID: ${data.ride.id}`,
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => {
+                            // Reset the form
+                            setCurrentLocation('');
+                            setDestination('');
+                            setSelectedOrigin(null);
+                            setSelectedDestination(null);
+                            setSelectedRide(null);
+                            setCustomPrices({});
+                            collapseSheet();
+
+                            // Call the original onConfirmRide callback if provided
+                            onConfirmRide?.();
+                        }
+                    }
+                ]
+            );
+        },
+        onError: (error) => {
+            Alert.alert(
+                'Error Creating Ride',
+                error.message || 'Failed to create ride. Please try again.',
+                [{ text: 'OK' }]
+            );
+        }
+    });
 
     // Initial location fetch
     useEffect(() => {
@@ -211,9 +248,24 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     };
 
     const handleConfirmPress = () => {
-        if (selectedOrigin && selectedDestination && selectedRide) {
-            onConfirmRide?.();
+        if (!selectedOrigin || !selectedDestination || !selectedRide) {
+            Alert.alert('Missing Information', 'Please select origin, destination, and ride type.');
+            return;
         }
+
+        // Create the ride using the hook
+        const customPrice = customPrices[selectedRide.id];
+
+        createRide.mutate({
+            originCoordinates: selectedOrigin.coordinates,
+            destinationCoordinates: selectedDestination.coordinates,
+            originAddress: selectedOrigin.address,
+            destinationAddress: selectedDestination.address,
+            rideType: selectedRide.type || selectedRide.name.toLowerCase(),
+            estimatedPrice: selectedRide.price,
+            customPrice: customPrice || undefined,
+            notes: `Ride from ${selectedOrigin.address} to ${selectedDestination.address}`,
+        });
     };
 
     const headerPanResponder = React.useMemo(() => PanResponder.create({
@@ -310,7 +362,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
                     />
 
                     <ConfirmButton
-                        isEnabled={!!(selectedOrigin && selectedDestination && selectedRide)}
+                        isEnabled={!!(selectedOrigin && selectedDestination && selectedRide) && !createRide.isPending}
                         onPress={handleConfirmPress}
                     />
                 </ScrollView>
