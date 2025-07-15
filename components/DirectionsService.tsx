@@ -8,7 +8,7 @@ interface RouteOptions {
 }
 
 interface RouteResult {
-    coordinates: Array<{latitude: number; longitude: number}>;
+    coordinates: {latitude: number; longitude: number}[];
     distance: number;
     duration: number;
     distanceText: string;
