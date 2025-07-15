@@ -6,6 +6,7 @@ import Mapbox from '@rnmapbox/maps';
 import { MapboxMap } from '@/components/MapboxMap';
 import { DirectionsService } from '@/components/DirectionsService';
 import { useLocation } from "@/hooks/Location/useLocation";
+import { useSocket } from '@/hooks/useSocket';
 
 const MOCK_DRIVER_START_LAT = 37.79000;
 const MOCK_DRIVER_START_LNG = -122.4324;
@@ -13,6 +14,7 @@ const MOCK_DRIVER_START_LNG = -122.4324;
 const TripScreen = () => {
     const params = useLocalSearchParams();
     const router = useRouter();
+    const socket = useSocket();
     const {
         price,
         pickupAddress,
@@ -96,53 +98,52 @@ const TripScreen = () => {
     }, [userPickupCoords]);
 
     useEffect(() => {
-        if (!routeToPickupGeoJSON || !userPickupCoords ) {
-            return;
-        }
+        if (!routeToPickupGeoJSON || !userPickupCoords || !socket) return;
 
         let waypoints: Mapbox.Coordinates[] = [];
         const geometry = routeToPickupGeoJSON.geometry;
 
         if (geometry.type === 'LineString') {
             waypoints = geometry.coordinates as Mapbox.Coordinates[];
-        } else if (geometry.type === 'FeatureCollection') {
-            geometry.features.forEach(feature => {
-                if (feature.geometry.type === 'LineString') {
-                    waypoints.push(...(feature.geometry.coordinates as Mapbox.Coordinates[]));
-                }
-            });
         }
 
-        if (waypoints.length === 0 || currentLegIndex >= waypoints.length -1 ) {
-            if (waypoints.length > 0 && userPickupCoords) {
-                setDriverCoords(userPickupCoords);
-            }
+        if (waypoints.length === 0 || currentLegIndex >= waypoints.length - 1) {
             return;
         }
 
         const moveInterval = setInterval(() => {
             setCurrentLegIndex(prevIndex => {
                 const nextIndex = prevIndex + 1;
+
                 if (nextIndex < waypoints.length) {
-                    setDriverCoords(waypoints[nextIndex]);
+                    const nextCoord = waypoints[nextIndex];
+                    setDriverCoords(nextCoord);
+
+                    if (socket && socket.readyState === WebSocket.OPEN) {
+                        socket.send(
+                            JSON.stringify({
+                                type: 'locationUpdate',
+                                lat: nextCoord[1],
+                                lng: nextCoord[0],
+                                driverName: driverName || "Driver"
+                            })
+                        );
+                    }
+
+
                     return nextIndex;
                 } else {
                     clearInterval(moveInterval);
-                    setDriverCoords(waypoints[waypoints.length - 1]);
+                    setDriverCoords(userPickupCoords);
                     setTripStatus("Driver Arrived");
-                    Alert.alert(
-                        "Driver Arrived",
-                        `${driverName || 'Your driver'} has arrived at ${pickupAddress || 'your pickup location'}.`,
-                        [{ text: "OK", onPress: () => router.replace('/(tabs)/') }]
-                    );
+                    Alert.alert("Driver Arrived", `${driverName || 'Your driver'} has arrived.`);
                     return prevIndex;
                 }
             });
-        }, 3000);
+        }, 2000); // Move every 2 seconds
 
         return () => clearInterval(moveInterval);
-
-    }, [routeToPickupGeoJSON, userPickupCoords, driverName, currentLegIndex]);
+    }, [routeToPickupGeoJSON, userPickupCoords, currentLegIndex, socket]);
 
 
     const initialMapRegion = currentUserLocation?.coords ? {
