@@ -48,8 +48,8 @@ const TripScreen = () => {
     const mapRef = useRef<Mapbox.MapView>(null);
     const directionsService = new DirectionsService();
 
-    const [userPickupCoords, setUserPickupCoords] = useState<Mapbox.Coordinates | null>(null);
-    const [driverCoords, setDriverCoords] = useState<Mapbox.Coordinates>([MOCK_DRIVER_START_LNG, MOCK_DRIVER_START_LAT]);
+    const [userPickupCoords, setUserPickupCoords] = useState<[number, number] | null>(null);
+    const [driverCoords, setDriverCoords] = useState<[number, number]>([MOCK_DRIVER_START_LNG, MOCK_DRIVER_START_LAT]);
     const [routeToPickupGeoJSON, setRouteToPickupGeoJSON] = useState<GeoJSON.Feature | null>(null);
     const [isLoadingRoute, setIsLoadingRoute] = useState(false);
     const [currentLegIndex, setCurrentLegIndex] = useState(0);
@@ -109,7 +109,7 @@ const TripScreen = () => {
                     );
                     setRouteToPickupGeoJSON(routeData.geoJSON);
                     if (routeData.geoJSON?.geometry?.type === 'LineString' && routeData.geoJSON.geometry.coordinates.length > 0) {
-                        setDriverCoords(routeData.geoJSON.geometry.coordinates[0] as Mapbox.Coordinates);
+                        setDriverCoords(routeData.geoJSON.geometry.coordinates[0] as [number, number]);
                         setCurrentLegIndex(0);
                     } else {
                         setDriverCoords([MOCK_DRIVER_START_LNG, MOCK_DRIVER_START_LAT]);
@@ -129,15 +129,15 @@ const TripScreen = () => {
             return;
         }
 
-        let waypoints: Mapbox.Coordinates[] = [];
+        let waypoints: [number, number][] = [];
         const geometry = routeToPickupGeoJSON.geometry;
 
         if (geometry.type === 'LineString') {
-            waypoints = (geometry.coordinates as Mapbox.Coordinates[]).filter(isValidCoordinate);
+            waypoints = (geometry.coordinates as [number, number][]).filter(isValidCoordinate);
         } else if (geometry.type === 'FeatureCollection') {
             geometry.features.forEach(feature => {
                 if (feature.geometry.type === 'LineString') {
-                    const validCoords = (feature.geometry.coordinates as Mapbox.Coordinates[]).filter(isValidCoordinate);
+                    const validCoords = (feature.geometry.coordinates as [number, number][]).filter(isValidCoordinate);
                     waypoints.push(...validCoords);
                 }
             });
@@ -157,7 +157,7 @@ const TripScreen = () => {
                     setDriverCoords(waypoints[nextIndex]);
                     return nextIndex;
                 } else {
-                    clearInterval(moveInterval);
+                    clearInterval(moveInterval as any);
                     const lastValidCoord = waypoints[waypoints.length - 1];
                     if (isValidCoordinate(lastValidCoord)) {
                         setDriverCoords(lastValidCoord);

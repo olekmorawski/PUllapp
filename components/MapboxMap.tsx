@@ -32,7 +32,7 @@ interface Props {
         longitude: number;
         latitudeDelta: number;
         longitudeDelta: number;
-    };
+    } | null;
     origin?: { latitude: number; longitude: number } | null;
     destination?: { latitude: number; longitude: number } | null;
     routeGeoJSON?: GeoJSON.Feature | null;
@@ -60,14 +60,6 @@ export const MapboxMap: React.FC<Props> = ({
     const cameraRef = useRef<Mapbox.Camera>(null);
     const [isMapReady, setIsMapReady] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-
-    // Safe fallback coordinates
-    const defaultRegion = {
-        latitude: 37.78825,
-        longitude: -122.4324,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-    };
 
     // Handle camera positioning with safe coordinate validation
     useEffect(() => {
@@ -118,26 +110,9 @@ export const MapboxMap: React.FC<Props> = ({
                         zoomLevel: zoomLevel,
                         animationDuration: 1000
                     });
-                } else {
-                    // Fallback to default region
-                    cameraRef.current?.setCamera({
-                        centerCoordinate: [defaultRegion.longitude, defaultRegion.latitude],
-                        zoomLevel: deltaToZoom(defaultRegion.latitudeDelta),
-                        animationDuration: 1000
-                    });
                 }
             } catch (error) {
                 console.error('Camera positioning error:', error);
-                // Fallback to default position
-                try {
-                    cameraRef.current?.setCamera({
-                        centerCoordinate: [defaultRegion.longitude, defaultRegion.latitude],
-                        zoomLevel: 12,
-                        animationDuration: 1000
-                    });
-                } catch (fallbackError) {
-                    console.error('Fallback camera positioning failed:', fallbackError);
-                }
             } finally {
                 setIsLoading(false);
             }

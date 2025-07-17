@@ -32,10 +32,10 @@ const StyledButton: React.FC<StyledButtonProps> = ({
     buttonVariantClasses = "bg-gray-300";
     textVariantClasses = "text-gray-500";
   } else if (variant === 'primary') {
-    buttonVariantClasses = "bg-blue-500 active:bg-blue-600";
+    buttonVariantClasses = "bg-blue-500";
     textVariantClasses = "text-white";
   } else if (variant === 'secondary') {
-    buttonVariantClasses = "bg-gray-200 active:bg-gray-300 border border-gray-300";
+    buttonVariantClasses = "bg-gray-200 border border-gray-300";
     textVariantClasses = "text-gray-800";
   }
 

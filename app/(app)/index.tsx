@@ -63,14 +63,7 @@ export default function RideAppInterface() {
         isLoading: isGettingLocation,
     } = useLocation({ autoStart: true });
 
-    const initialStaticRegion = {
-        latitude: 37.78825,
-        longitude: -122.4324,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-    };
-
-    const handleAcceptRide = useCallback((rideId: string) => {
+    const handleAcceptRide = useCallback(async (rideId: string) => {
         acceptRide(rideId, {
             onSuccess: (data) => {
                 const acceptedRide = data.ride;
@@ -244,7 +237,11 @@ export default function RideAppInterface() {
                 longitudeDelta: 0.01,
             };
         }
-        return initialStaticRegion;
+        return undefined;
+    };
+
+    const handleRefreshRides = async () => {
+        await fetchAvailableRides();
     };
 
     const handleToggleDriverView = () => {
@@ -253,7 +250,7 @@ export default function RideAppInterface() {
 
         if (newDriverState) {
             // Switching to driver view
-            fetchAvailableRides(); // Fetch fresh data
+            handleRefreshRides(); // Fetch fresh data
 
             // Clear passenger-specific state
             setRouteGeoJSON(null);
@@ -310,7 +307,7 @@ export default function RideAppInterface() {
                         isVisible={isDriverViewActive}
                         onAcceptRide={handleAcceptRide}
                         onRejectRide={handleRejectRide}
-                        onRefresh={fetchAvailableRides}
+                        onRefresh={handleRefreshRides}
                         isLoading={isLoadingRides}
                         isAcceptingRide={isAcceptingRide}
                     />

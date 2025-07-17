@@ -125,20 +125,7 @@ export const useLocation = (options: UseLocationOptions = {}): UseLocationResult
             } catch (fallbackErr) {
                 const errorMessage = err instanceof Error ? err.message : 'Failed to get location';
                 setError(new Error(errorMessage));
-
-                // Set fallback location
-                setLocation({
-                    coords: {
-                        latitude: 37.78825,
-                        longitude: -122.4324,
-                        altitude: null,
-                        accuracy: null,
-                        altitudeAccuracy: null,
-                        heading: null,
-                        speed: null,
-                    },
-                    timestamp: Date.now(),
-                });
+                setLocation(null);
             }
         } finally {
             setIsLoading(false);
