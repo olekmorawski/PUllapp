@@ -11,9 +11,9 @@ import Mapbox from '@rnmapbox/maps';
 
 import { DirectionsService } from '@/components/DirectionsService';
 import {useLocation} from "@/hooks/Location/useLocation";
-
-// API Base URL - update this to match your backend
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+import { useGetAvailableRides } from '@/hooks/ride/useGetAvailableRides';
+import { useAcceptRide } from '@/hooks/ride/useAcceptRide';
+import { AvailableRide } from '@/api/rideAPI';
 
 interface LocationData {
     coordinates: {
@@ -22,23 +22,6 @@ interface LocationData {
     };
     address: string;
     isCurrentLocation?: boolean;
-}
-
-// Ride interface matching your backend
-interface AvailableRide {
-    id: string;
-    userId: string;
-    userEmail: string;
-    walletAddress: string;
-    originCoordinates: { latitude: number; longitude: number };
-    destinationCoordinates: { latitude: number; longitude: number };
-    originAddress: string;
-    destinationAddress: string;
-    estimatedPrice?: string;
-    customPrice?: string;
-    status: 'pending' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
-    createdAt: string;
-    updatedAt: string;
 }
 
 export default function RideAppInterface() {
@@ -57,9 +40,9 @@ export default function RideAppInterface() {
     const [isDriverViewActive, setIsDriverViewActive] = useState(false);
 
     // Driver-specific states
-    const [availableRides, setAvailableRides] = useState<AvailableRide[]>([]);
-    const [isLoadingRides, setIsLoadingRides] = useState(false);
-    const [isAcceptingRide, setIsAcceptingRide] = useState<string | null>(null);
+    const { data: availableRidesData, isLoading: isLoadingRides, refetch: fetchAvailableRides } = useGetAvailableRides({ enabled: isDriverViewActive });
+    const { mutate: acceptRide, isPending: isAcceptingRide } = useAcceptRide();
+    const availableRides = availableRidesData?.rides || [];
 
     // Driver route states
     const [driverToClientRouteGeoJSON, setDriverToClientRouteGeoJSON] = useState<GeoJSON.Feature | null>(null);
@@ -87,120 +70,45 @@ export default function RideAppInterface() {
         longitudeDelta: 0.0421,
     };
 
-    // API Functions - Direct implementation
-    const fetchAvailableRides = useCallback(async () => {
-        if (!isDriverViewActive) return;
-
-        setIsLoadingRides(true);
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/rides?status=pending`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            setAvailableRides(data.rides || []);
-        } catch (error: any) {
-            console.error('Error fetching available rides:', error);
-            Alert.alert(
-                'Error Loading Rides',
-                error.message || 'Failed to fetch available rides. Please check your connection and try again.',
-                [
-                    { text: 'Retry', onPress: () => fetchAvailableRides() },
-                    { text: 'Cancel', style: 'cancel' }
-                ]
-            );
-            // Don't clear existing rides on error
-        } finally {
-            setIsLoadingRides(false);
-        }
-    }, [isDriverViewActive]);
-
-    const acceptRide = useCallback(async (rideId: string): Promise<AvailableRide> => {
-        const response = await fetch(`${API_BASE_URL}/api/rides/${rideId}/status`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
+    const handleAcceptRide = useCallback((rideId: string) => {
+        acceptRide(rideId, {
+            onSuccess: (data) => {
+                const acceptedRide = data.ride;
+                Alert.alert(
+                    'Ride Accepted!',
+                    `You have successfully accepted the ride from ${acceptedRide.originAddress} to ${acceptedRide.destinationAddress}.`,
+                    [
+                        {
+                            text: 'View Details',
+                            onPress: () => {
+                                // You can navigate to a ride details screen here
+                                console.log('Navigate to ride details:', acceptedRide);
+                            }
+                        },
+                        { text: 'OK', style: 'default' }
+                    ]
+                );
+                console.log('Successfully accepted ride:', acceptedRide);
             },
-            body: JSON.stringify({
-                status: 'accepted'
-            }),
+            onError: (error: any) => {
+                console.error('Error accepting ride:', error);
+                Alert.alert(
+                    'Failed to Accept Ride',
+                    error.message || 'Unable to accept the ride. Please try again.',
+                    [
+                        { text: 'Retry', onPress: () => handleAcceptRide(rideId) },
+                        { text: 'Cancel', style: 'cancel' }
+                    ]
+                );
+            },
         });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error);
-        }
-
-        if (!data.success) {
-            throw new Error('Failed to accept ride');
-        }
-
-        return data.ride;
-    }, []);
-
-    const handleAcceptRide = useCallback(async (rideId: string) => {
-        setIsAcceptingRide(rideId);
-        try {
-            // Accept the ride via API
-            const acceptedRide = await acceptRide(rideId);
-
-            // Remove the accepted ride from available rides
-            setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
-
-            Alert.alert(
-                'Ride Accepted!',
-                `You have successfully accepted the ride from ${acceptedRide.originAddress} to ${acceptedRide.destinationAddress}.`,
-                [
-                    {
-                        text: 'View Details',
-                        onPress: () => {
-                            // You can navigate to a ride details screen here
-                            console.log('Navigate to ride details:', acceptedRide);
-                        }
-                    },
-                    { text: 'OK', style: 'default' }
-                ]
-            );
-
-            console.log('Successfully accepted ride:', acceptedRide);
-
-        } catch (error: any) {
-            console.error('Error accepting ride:', error);
-            Alert.alert(
-                'Failed to Accept Ride',
-                error.message || 'Unable to accept the ride. Please try again.',
-                [
-                    { text: 'Retry', onPress: () => handleAcceptRide(rideId) },
-                    { text: 'Cancel', style: 'cancel' }
-                ]
-            );
-        } finally {
-            setIsAcceptingRide(null);
-        }
     }, [acceptRide]);
 
     const handleRejectRide = useCallback(async (rideId: string) => {
         try {
             // For now, just remove from local state
             // In the future, you might want to track rejections via API
-            setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
+            // setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
             console.log('Rejected ride:', rideId);
         } catch (error: any) {
             console.error('Error rejecting ride:', error);
@@ -345,7 +253,6 @@ export default function RideAppInterface() {
 
         if (newDriverState) {
             // Switching to driver view
-            setAvailableRides([]); // Clear any existing rides
             fetchAvailableRides(); // Fetch fresh data
 
             // Clear passenger-specific state
@@ -355,10 +262,8 @@ export default function RideAppInterface() {
 
         } else {
             // Switching to passenger view
-            setAvailableRides([]);
             setDriverToClientRouteGeoJSON(null);
             setClientToDestRouteGeoJSON(null);
-            setIsAcceptingRide(null);
         }
 
         setIsSidebarVisible(false);
