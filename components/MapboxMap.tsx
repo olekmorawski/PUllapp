@@ -1,18 +1,32 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import Mapbox from '@rnmapbox/maps'; // Changed import
+import Mapbox from '@rnmapbox/maps';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
-// import * as Location from 'expo-location'; // This import is not used in this file
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
+// Safe number validation
+const isValidNumber = (value: any): value is number => {
+    return typeof value === 'number' && !isNaN(value) && isFinite(value);
+};
+
+// Safe coordinate validation
+const isValidCoordinate = (coord: any): coord is { latitude: number; longitude: number } => {
+    return coord &&
+        isValidNumber(coord.latitude) &&
+        isValidNumber(coord.longitude) &&
+        coord.latitude >= -90 && coord.latitude <= 90 &&
+        coord.longitude >= -180 && coord.longitude <= 180;
+};
+
 // Convert latitude delta to zoom level
 const deltaToZoom = (latitudeDelta: number) => {
+    if (!isValidNumber(latitudeDelta) || latitudeDelta <= 0) return 12;
     return Math.round(Math.log2(360 / latitudeDelta));
 };
 
 interface Props {
-    mapRef: React.Ref<Mapbox.MapView>; // Changed to React.Ref for more flexibility
+    mapRef: React.Ref<Mapbox.MapView>;
     initialRegion?: {
         latitude: number;
         longitude: number;
@@ -21,12 +35,12 @@ interface Props {
     };
     origin?: { latitude: number; longitude: number } | null;
     destination?: { latitude: number; longitude: number } | null;
-    routeGeoJSON?: GeoJSON.Feature | null; // For passenger or single route
-    driverToClientRouteGeoJSON?: GeoJSON.Feature | null; // Driver to client
-    clientToDestRouteGeoJSON?: GeoJSON.Feature | null; // Client to destination
+    routeGeoJSON?: GeoJSON.Feature | null;
+    driverToClientRouteGeoJSON?: GeoJSON.Feature | null;
+    clientToDestRouteGeoJSON?: GeoJSON.Feature | null;
     driverPickupCoordinates?: { latitude: number; longitude: number } | null;
     driverDestinationCoordinates?: { latitude: number; longitude: number } | null;
-    onLocationUpdate?: (location: Mapbox.Location) => void; // Assuming Mapbox.Location is correct
+    onLocationUpdate?: (location: Mapbox.Location) => void;
     showUserLocation?: boolean;
 }
 
@@ -43,11 +57,19 @@ export const MapboxMap: React.FC<Props> = ({
                                                onLocationUpdate,
                                                showUserLocation = true
                                            }) => {
-    const cameraRef = useRef<Mapbox.Camera>(null); // Changed type
+    const cameraRef = useRef<Mapbox.Camera>(null);
     const [isMapReady, setIsMapReady] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Handle camera positioning
+    // Safe fallback coordinates
+    const defaultRegion = {
+        latitude: 37.78825,
+        longitude: -122.4324,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+    };
+
+    // Handle camera positioning with safe coordinate validation
     useEffect(() => {
         if (!isMapReady || !cameraRef.current) return;
 
@@ -55,59 +77,79 @@ export const MapboxMap: React.FC<Props> = ({
             setIsLoading(true);
 
             try {
-                if (driverToClientRouteGeoJSON && driverPickupCoordinates && driverDestinationCoordinates && origin) {
+                // Validate all coordinates before using them
+                const validOrigin = isValidCoordinate(origin) ? origin : null;
+                const validDestination = isValidCoordinate(destination) ? destination : null;
+                const validDriverPickup = isValidCoordinate(driverPickupCoordinates) ? driverPickupCoordinates : null;
+                const validDriverDest = isValidCoordinate(driverDestinationCoordinates) ? driverDestinationCoordinates : null;
+
+                if (driverToClientRouteGeoJSON && validOrigin && validDriverPickup && validDriverDest) {
                     // Driver view: fit driver, pickup, and destination
-                    // Assuming 'origin' prop is the driver's current location in this context
-                     cameraRef.current?.fitBounds(
-                        [
-                            Math.min(origin.longitude, driverPickupCoordinates.longitude, driverDestinationCoordinates.longitude),
-                            Math.min(origin.latitude, driverPickupCoordinates.latitude, driverDestinationCoordinates.latitude)
-                        ],
-                        [
-                            Math.max(origin.longitude, driverPickupCoordinates.longitude, driverDestinationCoordinates.longitude),
-                            Math.max(origin.latitude, driverPickupCoordinates.latitude, driverDestinationCoordinates.latitude)
-                        ],
+                    const coords = [validOrigin, validDriverPickup, validDriverDest];
+                    const lngs = coords.map(c => c.longitude);
+                    const lats = coords.map(c => c.latitude);
+
+                    cameraRef.current?.fitBounds(
+                        [Math.min(...lngs), Math.min(...lats)],
+                        [Math.max(...lngs), Math.max(...lats)],
                         [60, 50, 100, 50], // Padding: top, right, bottom, left
                         1000
                     );
-                } else if (origin && destination) {
+                } else if (validOrigin && validDestination) {
                     // Passenger view: Fit to origin and destination
                     cameraRef.current?.fitBounds(
-                        [origin.longitude, origin.latitude],
-                        [destination.longitude, destination.latitude],
+                        [validOrigin.longitude, validOrigin.latitude],
+                        [validDestination.longitude, validDestination.latitude],
                         [50, 50, 50, 50],
                         1000
                     );
-                } else if (origin) {
-                    // Center on origin (generic)
+                } else if (validOrigin) {
+                    // Center on origin only
                     cameraRef.current?.setCamera({
-                        centerCoordinate: [origin.longitude, origin.latitude],
+                        centerCoordinate: [validOrigin.longitude, validOrigin.latitude],
                         zoomLevel: 14,
                         animationDuration: 1000
                     });
-                } else if (initialRegion) {
-                    // Use initial region
+                } else if (initialRegion && isValidCoordinate(initialRegion)) {
+                    // Use initial region with validation
+                    const zoomLevel = deltaToZoom(initialRegion.latitudeDelta);
                     cameraRef.current?.setCamera({
                         centerCoordinate: [initialRegion.longitude, initialRegion.latitude],
-                        zoomLevel: deltaToZoom(initialRegion.latitudeDelta),
+                        zoomLevel: zoomLevel,
+                        animationDuration: 1000
+                    });
+                } else {
+                    // Fallback to default region
+                    cameraRef.current?.setCamera({
+                        centerCoordinate: [defaultRegion.longitude, defaultRegion.latitude],
+                        zoomLevel: deltaToZoom(defaultRegion.latitudeDelta),
                         animationDuration: 1000
                     });
                 }
             } catch (error) {
                 console.error('Camera positioning error:', error);
+                // Fallback to default position
+                try {
+                    cameraRef.current?.setCamera({
+                        centerCoordinate: [defaultRegion.longitude, defaultRegion.latitude],
+                        zoomLevel: 12,
+                        animationDuration: 1000
+                    });
+                } catch (fallbackError) {
+                    console.error('Fallback camera positioning failed:', fallbackError);
+                }
             } finally {
                 setIsLoading(false);
             }
         };
 
         fitToCoordinates();
-    }, [isMapReady, origin, destination, initialRegion]);
+    }, [isMapReady, origin, destination, initialRegion, driverToClientRouteGeoJSON, driverPickupCoordinates, driverDestinationCoordinates]);
 
     const handleMapLoaded = () => {
         setIsMapReady(true);
     };
 
-    // Create styles
     const containerStyle = StyleSheet.create({
         container: {
             flex: 1,
@@ -138,8 +180,8 @@ export const MapboxMap: React.FC<Props> = ({
         },
     });
 
-    const routeLineStyle = { // Default/Passenger route
-        lineColor: '#007AFF', // Blue
+    const routeLineStyle = {
+        lineColor: '#007AFF',
         lineWidth: 4,
         lineCap: 'round' as const,
         lineJoin: 'round' as const,
@@ -147,7 +189,7 @@ export const MapboxMap: React.FC<Props> = ({
     };
 
     const driverToClientRouteStyle = {
-        lineColor: '#007BFF', // A distinct blue
+        lineColor: '#007BFF',
         lineWidth: 5,
         lineCap: 'round' as const,
         lineJoin: 'round' as const,
@@ -155,7 +197,7 @@ export const MapboxMap: React.FC<Props> = ({
     };
 
     const clientToDestRouteStyle = {
-        lineColor: '#28A745', // Green
+        lineColor: '#28A745',
         lineWidth: 5,
         lineCap: 'round' as const,
         lineJoin: 'round' as const,
@@ -172,29 +214,27 @@ export const MapboxMap: React.FC<Props> = ({
                 />
             )}
 
-            <Mapbox.MapView  // Changed component
+            <Mapbox.MapView
                 ref={mapRef}
                 style={containerStyle.map}
                 logoEnabled={true}
                 attributionEnabled={true}
                 onDidFinishLoadingMap={handleMapLoaded}
             >
-                {/* Add key to Camera */}
                 <Mapbox.Camera key="camera" ref={cameraRef} />
 
-                {/* Add key to UserLocation */}
                 {showUserLocation && (
                     <Mapbox.UserLocation
                         key="user-location"
                         visible={true}
                         showsUserHeadingIndicator={true}
-                        onUpdate={onLocationUpdate} // Assuming Mapbox.Location is correct
+                        onUpdate={onLocationUpdate}
                     />
                 )}
 
-                {/* Add key to PointAnnotation */}
-                {origin && (
-                    <Mapbox.PointAnnotation  // Changed component
+                {/* Only render markers with valid coordinates */}
+                {isValidCoordinate(origin) && (
+                    <Mapbox.PointAnnotation
                         key={`origin-${origin.latitude}-${origin.longitude}`}
                         id="origin"
                         coordinate={[origin.longitude, origin.latitude]}
@@ -203,9 +243,8 @@ export const MapboxMap: React.FC<Props> = ({
                     </Mapbox.PointAnnotation>
                 )}
 
-                {/* Add key to PointAnnotation */}
-                {destination && (
-                    <Mapbox.PointAnnotation  // Changed component
+                {isValidCoordinate(destination) && (
+                    <Mapbox.PointAnnotation
                         key={`destination-${destination.latitude}-${destination.longitude}`}
                         id="destination"
                         coordinate={[destination.longitude, destination.latitude]}
@@ -214,9 +253,9 @@ export const MapboxMap: React.FC<Props> = ({
                     </Mapbox.PointAnnotation>
                 )}
 
-                {/* Add key to ShapeSource */}
+                {/* Route layers with validation */}
                 {routeGeoJSON && (
-                    <Mapbox.ShapeSource  // Changed component
+                    <Mapbox.ShapeSource
                         key="route-source"
                         id="routeSource"
                         shape={routeGeoJSON}
@@ -228,7 +267,6 @@ export const MapboxMap: React.FC<Props> = ({
                     </Mapbox.ShapeSource>
                 )}
 
-                {/* Driver to Client Route */}
                 {driverToClientRouteGeoJSON && (
                     <Mapbox.ShapeSource
                         key="driverToClientRouteSource"
@@ -242,7 +280,6 @@ export const MapboxMap: React.FC<Props> = ({
                     </Mapbox.ShapeSource>
                 )}
 
-                {/* Client to Destination Route */}
                 {clientToDestRouteGeoJSON && (
                     <Mapbox.ShapeSource
                         key="clientToDestRouteSource"

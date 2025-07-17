@@ -11,6 +11,30 @@ const MOCK_DRIVER_START_LAT = 37.79000;
 const MOCK_DRIVER_START_LNG = -122.4324;
 
 const TripScreen = () => {
+
+    const isValidNumber = (value: any): value is number => {
+        return typeof value === 'number' && !isNaN(value) && isFinite(value);
+    };
+
+// Safe coordinate validation
+    const isValidCoordinate = (coord: any): coord is [number, number] => {
+        return Array.isArray(coord) &&
+            coord.length === 2 &&
+            isValidNumber(coord[0]) &&
+            isValidNumber(coord[1]) &&
+            coord[1] >= -90 && coord[1] <= 90 &&
+            coord[0] >= -180 && coord[0] <= 180;
+    };
+
+    const isValidCoordinateObject = (coord: any): coord is { latitude: number; longitude: number } => {
+        return coord &&
+            isValidNumber(coord.latitude) &&
+            isValidNumber(coord.longitude) &&
+            coord.latitude >= -90 && coord.latitude <= 90 &&
+            coord.longitude >= -180 && coord.longitude <= 180;
+    };
+
+
     const params = useLocalSearchParams();
     const router = useRouter();
     const {
@@ -35,7 +59,7 @@ const TripScreen = () => {
 
     useEffect(() => {
         const geocodePickup = async () => {
-            if (pickupAddress === 'Current Location' && currentUserLocation) {
+            if (pickupAddress === 'Current Location' && currentUserLocation && isValidCoordinateObject(currentUserLocation.coords)) {
                 setUserPickupCoords([currentUserLocation.coords.longitude, currentUserLocation.coords.latitude]);
             } else if (typeof pickupAddress === 'string') {
                 try {
@@ -43,22 +67,27 @@ const TripScreen = () => {
                         const parts = pickupAddress.split(',');
                         const lat = parseFloat(parts[0]);
                         const lon = parseFloat(parts[1]);
-                        if (!isNaN(lat) && !isNaN(lon)) {
+                        if (isValidNumber(lat) && isValidNumber(lon)) {
                             setUserPickupCoords([lon, lat]);
                             return;
                         }
                     }
                     console.warn("Cannot determine pickup coordinates for address:", pickupAddress);
-                    if (currentUserLocation) {
-                         setUserPickupCoords([currentUserLocation.coords.longitude, currentUserLocation.coords.latitude]);
+
+                    // Use current location if available and valid
+                    if (currentUserLocation && isValidCoordinateObject(currentUserLocation.coords)) {
+                        setUserPickupCoords([currentUserLocation.coords.longitude, currentUserLocation.coords.latitude]);
                     } else {
+                        // Safe fallback coordinates (San Francisco)
                         setUserPickupCoords([-122.4324, 37.78825]);
                         Alert.alert("Location Issue", "Could not determine exact pickup coordinates. Using a default location.");
                     }
                 } catch (e) {
                     console.error("Error processing pickupAddress:", e);
-                    if (currentUserLocation) {
-                         setUserPickupCoords([currentUserLocation.coords.longitude, currentUserLocation.coords.latitude]);
+                    if (currentUserLocation && isValidCoordinateObject(currentUserLocation.coords)) {
+                        setUserPickupCoords([currentUserLocation.coords.longitude, currentUserLocation.coords.latitude]);
+                    } else {
+                        setUserPickupCoords([-122.4324, 37.78825]);
                     }
                 }
             }
@@ -96,7 +125,7 @@ const TripScreen = () => {
     }, [userPickupCoords]);
 
     useEffect(() => {
-        if (!routeToPickupGeoJSON || !userPickupCoords ) {
+        if (!routeToPickupGeoJSON || !userPickupCoords) {
             return;
         }
 
@@ -104,17 +133,18 @@ const TripScreen = () => {
         const geometry = routeToPickupGeoJSON.geometry;
 
         if (geometry.type === 'LineString') {
-            waypoints = geometry.coordinates as Mapbox.Coordinates[];
+            waypoints = (geometry.coordinates as Mapbox.Coordinates[]).filter(isValidCoordinate);
         } else if (geometry.type === 'FeatureCollection') {
             geometry.features.forEach(feature => {
                 if (feature.geometry.type === 'LineString') {
-                    waypoints.push(...(feature.geometry.coordinates as Mapbox.Coordinates[]));
+                    const validCoords = (feature.geometry.coordinates as Mapbox.Coordinates[]).filter(isValidCoordinate);
+                    waypoints.push(...validCoords);
                 }
             });
         }
 
-        if (waypoints.length === 0 || currentLegIndex >= waypoints.length -1 ) {
-            if (waypoints.length > 0 && userPickupCoords) {
+        if (waypoints.length === 0 || currentLegIndex >= waypoints.length - 1) {
+            if (waypoints.length > 0 && isValidCoordinate(userPickupCoords)) {
                 setDriverCoords(userPickupCoords);
             }
             return;
@@ -123,17 +153,20 @@ const TripScreen = () => {
         const moveInterval = setInterval(() => {
             setCurrentLegIndex(prevIndex => {
                 const nextIndex = prevIndex + 1;
-                if (nextIndex < waypoints.length) {
+                if (nextIndex < waypoints.length && isValidCoordinate(waypoints[nextIndex])) {
                     setDriverCoords(waypoints[nextIndex]);
                     return nextIndex;
                 } else {
                     clearInterval(moveInterval);
-                    setDriverCoords(waypoints[waypoints.length - 1]);
+                    const lastValidCoord = waypoints[waypoints.length - 1];
+                    if (isValidCoordinate(lastValidCoord)) {
+                        setDriverCoords(lastValidCoord);
+                    }
                     setTripStatus("Driver Arrived");
                     Alert.alert(
                         "Driver Arrived",
                         `${driverName || 'Your driver'} has arrived at ${pickupAddress || 'your pickup location'}.`,
-                        [{ text: "OK", onPress: () => router.replace('/(tabs)/') }]
+                        [{ text: "OK", onPress: () => router.replace('/(app)/') }]
                     );
                     return prevIndex;
                 }

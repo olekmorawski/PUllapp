@@ -3,14 +3,17 @@ import { StatusBar, Alert, View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Header } from '@/components/Header';
-import { Sidebar } from '@/components/Sidebar';
+import {Sidebar} from "@/components/Sidebar/Sidebar";
 import { BottomSheet } from '@/components/BottomSheet/BottomSheet';
-import { DriverBottomSheet } from '@/components/DriverBottomSheet'; // Import DriverBottomSheet
+import { DriverBottomSheet } from '@/components/DriverBottomSheet';
 import { MapboxMap } from '@/components/MapboxMap';
 import Mapbox from '@rnmapbox/maps';
 
 import { DirectionsService } from '@/components/DirectionsService';
 import {useLocation} from "@/hooks/Location/useLocation";
+
+// API Base URL - update this to match your backend
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
 interface LocationData {
     coordinates: {
@@ -19,6 +22,23 @@ interface LocationData {
     };
     address: string;
     isCurrentLocation?: boolean;
+}
+
+// Ride interface matching your backend
+interface AvailableRide {
+    id: string;
+    userId: string;
+    userEmail: string;
+    walletAddress: string;
+    originCoordinates: { latitude: number; longitude: number };
+    destinationCoordinates: { latitude: number; longitude: number };
+    originAddress: string;
+    destinationAddress: string;
+    estimatedPrice?: string;
+    customPrice?: string;
+    status: 'pending' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
+    createdAt: string;
+    updatedAt: string;
 }
 
 export default function RideAppInterface() {
@@ -34,19 +54,20 @@ export default function RideAppInterface() {
     } | null>(null);
     const [isLoadingRoute, setIsLoadingRoute] = useState(false);
     const [selectedRide, setSelectedRide] = useState<any>(null);
-    const [isDriverViewActive, setIsDriverViewActive] = useState(false); // New state for driver view
-    const [driverRideDetails, setDriverRideDetails] = useState<any>(null); // State for driver ride details
+    const [isDriverViewActive, setIsDriverViewActive] = useState(false);
+
+    // Driver-specific states
+    const [availableRides, setAvailableRides] = useState<AvailableRide[]>([]);
+    const [isLoadingRides, setIsLoadingRides] = useState(false);
+    const [isAcceptingRide, setIsAcceptingRide] = useState<string | null>(null);
 
     // Driver route states
     const [driverToClientRouteGeoJSON, setDriverToClientRouteGeoJSON] = useState<GeoJSON.Feature | null>(null);
     const [clientToDestRouteGeoJSON, setClientToDestRouteGeoJSON] = useState<GeoJSON.Feature | null>(null);
-    // Potentially add ...RouteInfo states as well if needed for display elsewhere
 
     // Define sample ride options
     const sampleRideOptions = [
         { id: 1, type: 'Standard', time: '5 min', suggestedRange: '$10-12', icon: 'car' },
-        { id: 2, type: 'XL', time: '8 min', suggestedRange: '$15-18', icon: 'suv' },
-        { id: 3, type: 'Luxury', time: '6 min', suggestedRange: '$25-30', icon: 'luxury_car' },
     ];
 
     const mapRef = useRef<Mapbox.MapView>(null);
@@ -65,6 +86,127 @@ export default function RideAppInterface() {
         latitudeDelta: 0.0922,
         longitudeDelta: 0.0421,
     };
+
+    // API Functions - Direct implementation
+    const fetchAvailableRides = useCallback(async () => {
+        if (!isDriverViewActive) return;
+
+        setIsLoadingRides(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/rides?status=pending`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            setAvailableRides(data.rides || []);
+        } catch (error: any) {
+            console.error('Error fetching available rides:', error);
+            Alert.alert(
+                'Error Loading Rides',
+                error.message || 'Failed to fetch available rides. Please check your connection and try again.',
+                [
+                    { text: 'Retry', onPress: () => fetchAvailableRides() },
+                    { text: 'Cancel', style: 'cancel' }
+                ]
+            );
+            // Don't clear existing rides on error
+        } finally {
+            setIsLoadingRides(false);
+        }
+    }, [isDriverViewActive]);
+
+    const acceptRide = useCallback(async (rideId: string): Promise<AvailableRide> => {
+        const response = await fetch(`${API_BASE_URL}/api/rides/${rideId}/status`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                status: 'accepted'
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        if (!data.success) {
+            throw new Error('Failed to accept ride');
+        }
+
+        return data.ride;
+    }, []);
+
+    const handleAcceptRide = useCallback(async (rideId: string) => {
+        setIsAcceptingRide(rideId);
+        try {
+            // Accept the ride via API
+            const acceptedRide = await acceptRide(rideId);
+
+            // Remove the accepted ride from available rides
+            setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
+
+            Alert.alert(
+                'Ride Accepted!',
+                `You have successfully accepted the ride from ${acceptedRide.originAddress} to ${acceptedRide.destinationAddress}.`,
+                [
+                    {
+                        text: 'View Details',
+                        onPress: () => {
+                            // You can navigate to a ride details screen here
+                            console.log('Navigate to ride details:', acceptedRide);
+                        }
+                    },
+                    { text: 'OK', style: 'default' }
+                ]
+            );
+
+            console.log('Successfully accepted ride:', acceptedRide);
+
+        } catch (error: any) {
+            console.error('Error accepting ride:', error);
+            Alert.alert(
+                'Failed to Accept Ride',
+                error.message || 'Unable to accept the ride. Please try again.',
+                [
+                    { text: 'Retry', onPress: () => handleAcceptRide(rideId) },
+                    { text: 'Cancel', style: 'cancel' }
+                ]
+            );
+        } finally {
+            setIsAcceptingRide(null);
+        }
+    }, [acceptRide]);
+
+    const handleRejectRide = useCallback(async (rideId: string) => {
+        try {
+            // For now, just remove from local state
+            // In the future, you might want to track rejections via API
+            setAvailableRides(prev => prev.filter(ride => ride.id !== rideId));
+            console.log('Rejected ride:', rideId);
+        } catch (error: any) {
+            console.error('Error rejecting ride:', error);
+            Alert.alert('Error', 'Failed to reject ride.');
+        }
+    }, []);
 
     useEffect(() => {
         if (userLocation && !origin) {
@@ -158,15 +300,10 @@ export default function RideAppInterface() {
     }, [origin, destination, selectedRide, routeInfo]);
 
     const processRideConfirmation = () => {
-        // Alert.alert('Ride Requested', 'Finding nearby drivers...');
-        // setTimeout(() => {
-        //     Alert.alert('Driver Found', 'Your driver will arrive in 5 minutes');
-        // }, 3000);
-
-        const estimatedFare = ((routeInfo?.distanceValue || 0) / 1000) * 1.5 + 3; // Basic price calculation
+        const estimatedFare = ((routeInfo?.distanceValue || 0) / 1000) * 1.5 + 3;
 
         router.push({
-            pathname: '/(tabs)/loading',
+            pathname: '/(app)/loading',
             params: {
                 price: estimatedFare.toFixed(2),
                 pickupAddress: origin?.address || 'Current Location',
@@ -202,74 +339,53 @@ export default function RideAppInterface() {
         return initialStaticRegion;
     };
 
-    const handleMenuPress = () => setIsSidebarVisible(true);
-    const handleNotificationPress = () => console.log('Notifications pressed');
-    const handleProfilePress = () => router.push('/(tabs)/profile');
-    const handleHistoryPress = () => router.push('/(tabs)/history');
-    const handlePaymentPress = () => console.log('Payment pressed');
-    const handleSettingsPress = () => router.push('/(tabs)/settings');
-    const handleBecomeDriverPress = () => router.push('/(tabs)/become-driver');
-
     const handleToggleDriverView = () => {
         const newDriverState = !isDriverViewActive;
         setIsDriverViewActive(newDriverState);
 
         if (newDriverState) {
-            // Simulate fetching driver ride details & routes
-            const mockPickupCoords = { latitude: 37.7749, longitude: -122.4194 }; // San Francisco City Hall (example)
-            const mockDestCoords = { latitude: 37.7899, longitude: -122.4003 }; // Near Union Square (example)
-            // Assume driver is at userLocation or a fixed point for simulation
-            const driverCurrentLocation = userLocation?.coords || { latitude: 37.7950, longitude: -122.4300 }; // Fallback if userLocation is null
+            // Switching to driver view
+            setAvailableRides([]); // Clear any existing rides
+            fetchAvailableRides(); // Fetch fresh data
 
-            setDriverRideDetails({
-                earnings: '$15.50',
-                pickupAddress: '123 Main St, Anytown, USA (SF City Hall)',
-                destinationAddress: '789 Oak Ave, Anytown, USA (Union Square)',
-                timeToClient: '5 min',
-                // Store coords for route calculation
-                pickupCoordinates: mockPickupCoords,
-                destinationCoordinates: mockDestCoords,
-                driverCoordinates: driverCurrentLocation,
-            });
-
-            // Simulate fetching routes
-            const fetchDriverRoutes = async () => {
-                setIsLoadingRoute(true); // Use existing loading state for now
-                try {
-                    const routeToClient = await directionsService.getDirections(
-                        driverCurrentLocation,
-                        mockPickupCoords
-                    );
-                    setDriverToClientRouteGeoJSON(routeToClient.geoJSON);
-
-                    const routeToDest = await directionsService.getDirections(
-                        mockPickupCoords,
-                        mockDestCoords
-                    );
-                    setClientToDestRouteGeoJSON(routeToDest.geoJSON);
-
-                } catch (error) {
-                    console.error("Error fetching driver routes:", error);
-                    Alert.alert("Route Error", "Could not calculate driver routes.");
-                    setDriverToClientRouteGeoJSON(null);
-                    setClientToDestRouteGeoJSON(null);
-                } finally {
-                    setIsLoadingRoute(false);
-                }
-            };
-            fetchDriverRoutes();
-
-        } else {
-            // Clear driver specific data
-            setDriverRideDetails(null);
-            setDriverToClientRouteGeoJSON(null);
-            setClientToDestRouteGeoJSON(null);
-            // Clear passenger routes as well if switching from a passenger view that had them
+            // Clear passenger-specific state
             setRouteGeoJSON(null);
             setRouteInfo(null);
+            setSelectedRide(null);
+
+        } else {
+            // Switching to passenger view
+            setAvailableRides([]);
+            setDriverToClientRouteGeoJSON(null);
+            setClientToDestRouteGeoJSON(null);
+            setIsAcceptingRide(null);
         }
-        setIsSidebarVisible(false); // Close sidebar after toggling
+
+        setIsSidebarVisible(false);
     };
+
+    // Auto-refresh available rides every 30 seconds when in driver view
+    useEffect(() => {
+        if (!isDriverViewActive) return;
+
+        // Initial fetch
+        fetchAvailableRides();
+
+        // Set up interval for auto-refresh
+        const interval = setInterval(() => {
+            fetchAvailableRides();
+        }, 30000); // 30 seconds
+
+        return () => clearInterval(interval);
+    }, [isDriverViewActive, fetchAvailableRides]);
+
+    const handleMenuPress = () => setIsSidebarVisible(true);
+    const handleNotificationPress = () => console.log('Notifications pressed');
+    const handleProfilePress = () => router.push('/(app)/profile');
+    const handleHistoryPress = () => router.push('/(app)/history');
+    const handlePaymentPress = () => console.log('Payment pressed');
+    const handleSettingsPress = () => router.push('/(app)/settings');
+    const handleBecomeDriverPress = () => router.push('/(app)/become-driver');
 
     return (
         <SafeAreaView className="flex-1 bg-gray-100" edges={['right', 'top', 'left', 'bottom']}>
@@ -281,17 +397,17 @@ export default function RideAppInterface() {
                 <>
                     <MapboxMap
                         mapRef={mapRef}
-                        initialRegion={getInitialRegion()} // Or driver-specific region
-                        driverToClientRouteGeoJSON={driverToClientRouteGeoJSON}
-                        clientToDestRouteGeoJSON={clientToDestRouteGeoJSON}
-                        origin={driverRideDetails?.driverCoordinates ? {latitude: driverRideDetails.driverCoordinates.latitude, longitude: driverRideDetails.driverCoordinates.longitude} : undefined}
-                        driverPickupCoordinates={driverRideDetails?.pickupCoordinates}
-                        driverDestinationCoordinates={driverRideDetails?.destinationCoordinates}
-                        showUserLocation={true} // Driver's location
+                        initialRegion={getInitialRegion()}
+                        showUserLocation={true}
                     />
                     <DriverBottomSheet
+                        availableRides={availableRides}
                         isVisible={isDriverViewActive}
-                        rideDetails={driverRideDetails}
+                        onAcceptRide={handleAcceptRide}
+                        onRejectRide={handleRejectRide}
+                        onRefresh={fetchAvailableRides}
+                        isLoading={isLoadingRides}
+                        isAcceptingRide={isAcceptingRide}
                     />
                 </>
             ) : (
@@ -301,12 +417,12 @@ export default function RideAppInterface() {
                         initialRegion={getInitialRegion()}
                         origin={origin?.coordinates}
                         destination={destination?.coordinates}
-                        routeGeoJSON={!isDriverViewActive ? routeGeoJSON : null} // Only show passenger route if not in driver view
+                        routeGeoJSON={routeGeoJSON}
                         onLocationUpdate={handleLocationUpdate}
                         showUserLocation={true}
                     />
 
-                    {isLoadingRoute && !isDriverViewActive && ( // Only show passenger loading indicator
+                    {isLoadingRoute && (
                         <View className="absolute top-24 left-5 right-5 bg-white p-4 rounded-lg shadow-md flex-row items-center">
                             <ActivityIndicator size="small" color="#007AFF" />
                             <Text className="ml-3 text-gray-600">Calculating route...</Text>
@@ -338,7 +454,7 @@ export default function RideAppInterface() {
                 onHistoryPress={handleHistoryPress}
                 onPaymentPress={handlePaymentPress}
                 onSettingsPress={handleSettingsPress}
-                onBecomeDriverPress={!isDriverViewActive ? handleBecomeDriverPress : undefined} // Only show if not in driver view
+                onBecomeDriverPress={!isDriverViewActive ? handleBecomeDriverPress : undefined}
                 onSwitchToDriverViewPress={!isDriverViewActive ? handleToggleDriverView : undefined}
                 onSwitchToPassengerViewPress={isDriverViewActive ? handleToggleDriverView : undefined}
             />

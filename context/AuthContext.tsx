@@ -1,108 +1,69 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { dynamicClient } from '@/app/_layout';
-import {UserProfile} from "@dynamic-labs/types";
+import React, { createContext, useContext, ReactNode } from 'react';
+import { useDynamicAuth, DynamicUserData } from '@/hooks/useDynamicAuth';
+import { useUserVerification } from '@/hooks/useUserVerification';
+import {BackendUser} from "@/api/userAPI";
+
 interface AuthContextType {
   isAuthenticated: boolean;
-  setIsAuthenticated: React.Dispatch<React.SetStateAction<boolean>>;
-  userEmail?: string;
+  isLoading: boolean;
+  dynamicUser: DynamicUserData | null;
+  backendUser: BackendUser | null;
+  isVerified: boolean;
+  isDriver: boolean;
+  verificationStatus: 'idle' | 'checking' | 'verified' | 'failed';
   sendEmailOTP: (email: string) => Promise<void>;
   verifyEmailOTP: (otp: string) => Promise<void>;
   resendEmailOTP: () => Promise<void>;
-  isLoading: boolean;
+  signOut: () => Promise<void>;
   showAuthFlow: () => void;
   hideAuthFlow: () => void;
+  userEmail?: string;
+  userName: string;
+  walletAddress: string;
+  setIsAuthenticated: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
-  const [isLoading, setIsLoading] = useState(false);
+  const dynamicAuth = useDynamicAuth();
 
-  // Monitor authentication state changes
-  useEffect(() => {
-    const handleAuthSuccess = (user: UserProfile) => {
-      setIsAuthenticated(true);
-      setUserEmail(undefined); // Clear OTP email if any
-    };
+  const userVerification = useUserVerification({
+    email: dynamicAuth.dynamicUser?.email || '',
+    walletAddress: dynamicAuth.dynamicUser?.walletAddress || '',
+    enabled: dynamicAuth.isAuthenticated && !!dynamicAuth.dynamicUser,
+  });
 
-    const handleLogout = (user: UserProfile | null) => {
-      setIsAuthenticated(false);
-      setUserEmail(undefined);
-    };
+  const isLoading = dynamicAuth.isLoading || userVerification.isLoading;
 
-    // Listen for authentication events from the Dynamic client
-    dynamicClient.auth.on('authSuccess', handleAuthSuccess);
-    dynamicClient.auth.on('loggedOut', handleLogout);
+  const userEmail = dynamicAuth.dynamicUser?.email;
 
-    return () => {
-      dynamicClient.auth.off('authSuccess', handleAuthSuccess);
-      dynamicClient.auth.off('loggedOut', handleLogout);
-    };
-  }, []);
+  const userName = userVerification.backendUser?.username ||
+      'User';
 
-  const sendEmailOTP = async (email: string) => {
-    setIsLoading(true);
-    try {
-      // Use Dynamic's email OTP system
-      await dynamicClient.auth.email.sendOTP(email);
-      setUserEmail(email);
-    } catch (error) {
-      console.error('Failed to send OTP:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const verifyEmailOTP = async (otp: string) => {
-    setIsLoading(true);
-    try {
-      // Use Dynamic's email OTP verification
-      await dynamicClient.auth.email.verifyOTP(otp);
-      // Authentication success will be handled by the event listener above
-    } catch (error) {
-      console.error('Failed to verify OTP:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const resendEmailOTP = async () => {
-    if (!userEmail) {
-      throw new Error('No email set for resending OTP');
-    }
-    setIsLoading(true);
-    try {
-      await dynamicClient.auth.email.resendOTP();
-    } catch (error) {
-      console.error('Failed to resend OTP:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const showAuthFlow = () => {
-    dynamicClient.ui.auth.show();
-  };
-
-  const hideAuthFlow = () => {
-    dynamicClient.ui.auth.hide();
-  };
+  const walletAddress = dynamicAuth.dynamicUser?.walletAddress || '';
 
   const contextValue: AuthContextType = {
-    isAuthenticated,
-    setIsAuthenticated,
-    userEmail,
-    sendEmailOTP,
-    verifyEmailOTP,
-    resendEmailOTP,
+    isAuthenticated: dynamicAuth.isAuthenticated,
     isLoading,
-    showAuthFlow,
-    hideAuthFlow,
+    dynamicUser: dynamicAuth.dynamicUser,
+    backendUser: userVerification.backendUser,
+    isVerified: userVerification.isVerified,
+    verificationStatus: userVerification.verificationStatus,
+    sendEmailOTP: dynamicAuth.sendEmailOTP,
+    verifyEmailOTP: dynamicAuth.verifyEmailOTP,
+    resendEmailOTP: dynamicAuth.resendEmailOTP,
+    signOut: dynamicAuth.signOut,
+    showAuthFlow: dynamicAuth.showAuthFlow,
+    hideAuthFlow: dynamicAuth.hideAuthFlow,
+
+    // Legacy compatibility - now using backend username as priority
+    userEmail,
+    userName,
+    walletAddress,
+    setIsAuthenticated: () => {
+      console.warn('setIsAuthenticated is deprecated, authentication is now managed automatically');
+    },
   };
 
   return (

@@ -8,20 +8,16 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import React, { useEffect } from 'react';
 import { useRouter, useSegments, Stack } from 'expo-router';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
-import { createClient } from "@dynamic-labs/client";
-import { ReactNativeExtension } from "@dynamic-labs/react-native-extension";
-import { ViemExtension } from "@dynamic-labs/viem-extension";
-import { ZeroDevExtension } from "@dynamic-labs/zerodev-extension";
+import { dynamicClient } from '@/lib/dynamicClient';
+import {queryClient} from "@/lib/queryClient";
+import {QueryClientProvider} from "@tanstack/react-query";
+import {LogBox} from "react-native";
 
-export const dynamicClient = createClient({
-  environmentId: "76727abf-ff90-4981-ba7a-b3b014897e00",
-  appLogoUrl: "https://demo.dynamic.xyz/favicon-32x32.png",
-  appName: "Dynamic Demo",
-})
-    .extend(ReactNativeExtension())
-    .extend(ViemExtension())
-    .extend(ZeroDevExtension());
-
+LogBox.ignoreLogs([
+  'Invalid prop `sourceID` supplied to `React.Fragment`',
+  'Warning: Invalid prop `sourceID` supplied to `React.Fragment`',
+  'React.Fragment can only have `key` and `children` props',
+]);
 
 function RootNavigation() {
   const colorScheme = useColorScheme();
@@ -37,7 +33,7 @@ function RootNavigation() {
     const inAuthGroup = segments[0] === '(auth)';
 
     if (isAuthenticated && inAuthGroup) {
-      router.replace('/(tabs)');
+      router.replace('/(app)');
     } else if (!isAuthenticated && !inAuthGroup && segments[0] !== undefined) {
       router.replace('/(auth)/login');
     }
@@ -53,7 +49,7 @@ function RootNavigation() {
           <dynamicClient.reactNative.WebView />
           <Stack>
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(app)" options={{ headerShown: false }} />
             <Stack.Screen name="+not-found" />
           </Stack>
           <StatusBar style="auto" />
@@ -64,8 +60,10 @@ function RootNavigation() {
 
 export default function RootLayout() {
   return (
+      <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <RootNavigation />
       </AuthProvider>
+        </QueryClientProvider>
   );
 }
