@@ -11,7 +11,7 @@ const LoadingScreen = () => {
     const [statusText, setStatusText] = useState('Finding your driver...');
     const [driverName, setDriverName] = useState('');
     const [driverVehicle, setDriverVehicle] = useState('');
-    const [eta, setEta] = useState(300); // 5 minutes in seconds
+    const [eta, setEta] = useState(10); // 5 minutes in seconds
     const [elapsedTime, setElapsedTime] = useState(0);
     const [driverFound, setDriverFound] = useState(false);
 
