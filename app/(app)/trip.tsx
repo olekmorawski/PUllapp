@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, Alert } from 'react-native'; // StyleSheet removed
-import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
+import { View, Text, Alert } from 'react-native';
+import { useLocalSearchParams, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Mapbox from '@rnmapbox/maps';
 import { MapboxMap } from '@/components/MapboxMap';
@@ -17,16 +17,6 @@ const TripScreen = () => {
         return typeof value === 'number' && !isNaN(value) && isFinite(value);
     };
 
-// Safe coordinate validation
-    const isValidCoordinate = (coord: any): coord is [number, number] => {
-        return Array.isArray(coord) &&
-            coord.length === 2 &&
-            isValidNumber(coord[0]) &&
-            isValidNumber(coord[1]) &&
-            coord[1] >= -90 && coord[1] <= 90 &&
-            coord[0] >= -180 && coord[0] <= 180;
-    };
-
     const isValidCoordinateObject = (coord: any): coord is { latitude: number; longitude: number } => {
         return coord &&
             isValidNumber(coord.latitude) &&
@@ -35,9 +25,7 @@ const TripScreen = () => {
             coord.longitude >= -180 && coord.longitude <= 180;
     };
 
-
     const params = useLocalSearchParams();
-    const router = useRouter();
     const socket = useSocket();
     const {
         price,
@@ -133,7 +121,7 @@ const TripScreen = () => {
         const geometry = routeToPickupGeoJSON.geometry;
 
         if (geometry.type === 'LineString') {
-            waypoints = geometry.coordinates as Mapbox.Coordinates[];
+            waypoints = geometry.coordinates as [number, number][];
         }
 
         if (waypoints.length === 0 || currentLegIndex >= waypoints.length - 1) {
@@ -159,7 +147,6 @@ const TripScreen = () => {
                         );
                     }
 
-
                     return nextIndex;
                 } else {
                     clearInterval(moveInterval);
@@ -174,7 +161,6 @@ const TripScreen = () => {
         return () => clearInterval(moveInterval);
     }, [routeToPickupGeoJSON, userPickupCoords, currentLegIndex, socket]);
 
-
     const initialMapRegion = currentUserLocation?.coords ? {
         latitude: currentUserLocation.coords.latitude,
         longitude: currentUserLocation.coords.longitude,
@@ -187,19 +173,14 @@ const TripScreen = () => {
         longitudeDelta: 0.0421,
     };
 
-    // Marker styles are tricky with Tailwind directly on Mapbox child components.
-    // Often, you pass a styled <View> to the annotation.
-    // Here, we define class strings and apply them.
     const markerBaseClasses = "w-[30px] h-[30px] rounded-full justify-center items-center border-2 border-white shadow-md";
-    const pickupMarkerClasses = `${markerBaseClasses} bg-blue-500`; // bg-opacity-90 might not work directly, check NativeWind docs if needed
+    const pickupMarkerClasses = `${markerBaseClasses} bg-blue-500`;
     const driverMarkerClasses = `${markerBaseClasses} bg-red-500`;
     const markerTextClasses = "text-white font-bold text-xs";
 
     return (
-        // styles.container -> className
         <SafeAreaView className="flex-1 bg-white">
             <Stack.Screen options={{ title: tripStatus }} />
-            {/* styles.mapContainer -> className */}
             <View className="flex-[0.7]">
                 <MapboxMap
                     mapRef={mapRef}
@@ -220,7 +201,7 @@ const TripScreen = () => {
                         </Mapbox.PointAnnotation>
                     )}
                     {driverCoords && (
-                         <Mapbox.PointAnnotation
+                        <Mapbox.PointAnnotation
                             id="driverLocation"
                             coordinate={driverCoords}
                         >
@@ -232,11 +213,8 @@ const TripScreen = () => {
                 </MapboxMap>
             </View>
 
-            {/* styles.infoPanel -> className */}
             <View className="flex-[0.3] p-4 bg-gray-50 border-t border-gray-200">
-                {/* styles.infoTitle -> className */}
                 <Text className="text-lg font-bold mb-2.5">{tripStatus}</Text>
-                {/* styles.infoText -> className */}
                 <Text className="text-base mb-2">Driver: {driverName || 'N/A'} ({driverVehicle || 'N/A'})</Text>
                 <Text className="text-base mb-2">To: {pickupAddress || 'N/A'}</Text>
                 <Text className="text-base mb-2">Est. Price: ${typeof price === 'string' ? parseFloat(price).toFixed(2) : 'N/A'}</Text>
@@ -245,7 +223,5 @@ const TripScreen = () => {
         </SafeAreaView>
     );
 };
-
-// StyleSheet.create({...}) block removed
 
 export default TripScreen;

@@ -42,6 +42,7 @@ interface Props {
     driverDestinationCoordinates?: { latitude: number; longitude: number } | null;
     onLocationUpdate?: (location: Mapbox.Location) => void;
     showUserLocation?: boolean;
+    children?: React.ReactNode;
 }
 
 export const MapboxMap: React.FC<Props> = ({
@@ -55,7 +56,8 @@ export const MapboxMap: React.FC<Props> = ({
                                                driverPickupCoordinates,
                                                driverDestinationCoordinates,
                                                onLocationUpdate,
-                                               showUserLocation = true
+                                               showUserLocation = true,
+                                               children
                                            }) => {
     const cameraRef = useRef<Mapbox.Camera>(null);
     const [isMapReady, setIsMapReady] = useState(false);
@@ -267,6 +269,8 @@ export const MapboxMap: React.FC<Props> = ({
                         />
                     </Mapbox.ShapeSource>
                 )}
+
+                {children}
             </Mapbox.MapView>
         </View>
     );
