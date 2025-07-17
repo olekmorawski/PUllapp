@@ -25,8 +25,8 @@ export interface AcceptRideResponse {
     ride: AvailableRide;
 }
 
-// Configure your backend URL
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+// Configure your backend URL with fallback
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 // Base API client
 class RideAPIClient {

@@ -29,7 +29,7 @@ export const usePlacesSearch = (options: UsePlacesSearchOptions = {}): UsePlaces
     const [searchResults, setSearchResults] = useState<PlaceResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
-    const searchTimeout = useRef<NodeJS.Timeout | null>(null);
+    const searchTimeout = useRef<number | null>(null);
     const abortController = useRef<AbortController | null>(null);
 
     // Cleanup on unmount
