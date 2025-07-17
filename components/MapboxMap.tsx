@@ -32,7 +32,7 @@ interface Props {
         longitude: number;
         latitudeDelta: number;
         longitudeDelta: number;
-    };
+    } | null;
     origin?: { latitude: number; longitude: number } | null;
     destination?: { latitude: number; longitude: number } | null;
     routeGeoJSON?: GeoJSON.Feature | null;
