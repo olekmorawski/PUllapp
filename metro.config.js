@@ -3,51 +3,83 @@ const { withNativeWind } = require('nativewind/metro');
 
 const config = getDefaultConfig(__dirname);
 
-// Add resolver configuration for crypto libraries
 config.resolver.resolveRequest = (context, moduleName, platform) => {
     try {
-        return context.resolveRequest(context, moduleName, platform);
-    } catch (error) {
-        // Handle .js to .ts resolution
-        if (moduleName.endsWith('.js')) {
-            const tsModuleName = moduleName.replace(/\.js$/, '.ts');
-            try {
-                return context.resolveRequest(context, tsModuleName, platform);
-            } catch (tsError) {
-                // Fall through to original error if .ts doesn't work
-            }
+        const problematicPackages = [
+            '@noble/hashes',
+            '@noble/curves',
+            '@noble/secp256k1',
+            '@dynamic-labs',
+            'viem',
+            'abitype',
+            '@adraffy/ens-normalize'
+        ];
+
+        if (problematicPackages.some(pkg => moduleName.startsWith(pkg))) {
+            return context.resolveRequest(
+                {
+                    ...context,
+                    unstable_enablePackageExports: false,
+                },
+                moduleName,
+                platform
+            );
         }
 
-        // Handle noble-hashes crypto import issues
-        if (moduleName === '@noble/hashes/crypto' || moduleName === '@noble/hashes/crypto.js') {
-            try {
-                return context.resolveRequest(context, '@noble/hashes/crypto.web.js', platform);
-            } catch (webError) {
-                try {
-                    return context.resolveRequest(context, '@noble/hashes/utils.js', platform);
-                } catch (utilsError) {
-                    // Fall back to main entry
-                    return context.resolveRequest(context, '@noble/hashes', platform);
-                }
-            }
-        }
-
-        // Handle async-require issues
         if (moduleName.includes('async-require.js')) {
-            // Return a mock resolution or skip
             return {
                 type: 'empty',
             };
         }
 
-        throw error;
+        if (moduleName === 'crypto') {
+            return context.resolveRequest(
+                context,
+                'react-native-quick-crypto',
+                platform
+            );
+        }
+
+        if (moduleName === '@noble/hashes/crypto.js') {
+            return context.resolveRequest(
+                context,
+                'react-native-get-random-values',
+                platform
+            );
+        }
+
+        if (moduleName.endsWith('.js')) {
+            const tsModuleName = moduleName.replace(/\.js$/, '.ts');
+            try {
+                return context.resolveRequest(context, tsModuleName, platform);
+            } catch (tsError) {
+            }
+        }
+
+        return context.resolveRequest(context, moduleName, platform);
+    } catch (error) {
+        try {
+            return context.resolveRequest(
+                {
+                    ...context,
+                    unstable_enablePackageExports: false,
+                },
+                moduleName,
+                platform
+            );
+        } catch (fallbackError) {
+            throw error;
+        }
     }
 };
 
-// Add node module extensions
 config.resolver.sourceExts.push('mjs');
 
-// Add platform extensions for better resolution
 config.resolver.platforms = ['native', 'react-native', 'web', 'ios', 'android'];
+
+config.resolver.blockList = [
+    /.*\/async-require\.js$/,
+    /.*\/metro.*\/async-require\.js$/,
+];
 
 module.exports = withNativeWind(config, { input: './global.css' });
