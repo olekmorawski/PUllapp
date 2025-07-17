@@ -11,6 +11,13 @@ import { AuthProvider, useAuthContext } from '@/context/AuthContext';
 import { dynamicClient } from '@/lib/dynamicClient';
 import {queryClient} from "@/lib/queryClient";
 import {QueryClientProvider} from "@tanstack/react-query";
+import {LogBox} from "react-native";
+
+LogBox.ignoreLogs([
+  'Invalid prop `sourceID` supplied to `React.Fragment`',
+  'Warning: Invalid prop `sourceID` supplied to `React.Fragment`',
+  'React.Fragment can only have `key` and `children` props',
+]);
 
 function RootNavigation() {
   const colorScheme = useColorScheme();
@@ -26,7 +33,7 @@ function RootNavigation() {
     const inAuthGroup = segments[0] === '(auth)';
 
     if (isAuthenticated && inAuthGroup) {
-      router.replace('/(tabs)');
+      router.replace('/(app)');
     } else if (!isAuthenticated && !inAuthGroup && segments[0] !== undefined) {
       router.replace('/(auth)/login');
     }
@@ -42,7 +49,7 @@ function RootNavigation() {
           <dynamicClient.reactNative.WebView />
           <Stack>
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(app)" options={{ headerShown: false }} />
             <Stack.Screen name="+not-found" />
           </Stack>
           <StatusBar style="auto" />
