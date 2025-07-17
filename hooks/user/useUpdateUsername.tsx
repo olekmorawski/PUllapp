@@ -61,10 +61,15 @@ export const useUsernameUpdate = (options: UseUsernameUpdateOptions = {}) => {
             throw new Error('No email found - please log in again');
         }
 
+        const walletAddress = dynamicUser.walletAddress || backendUser?.walletAddress;
+        if (!walletAddress) {
+            throw new Error('No wallet address found - please log in again');
+        }
+
         return updateUser.mutateAsync({
             email: dynamicUser.email,
             username: newUsername,
-            walletAddress: dynamicUser.walletAddress || backendUser?.walletAddress
+            walletAddress: walletAddress
         });
     };
 

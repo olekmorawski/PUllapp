@@ -49,6 +49,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     dynamicUser: dynamicAuth.dynamicUser,
     backendUser: userVerification.backendUser,
     isVerified: userVerification.isVerified,
+    isDriver: userVerification.backendUser?.isDriver || false,
     verificationStatus: userVerification.verificationStatus,
     sendEmailOTP: dynamicAuth.sendEmailOTP,
     verifyEmailOTP: dynamicAuth.verifyEmailOTP,
@@ -56,14 +57,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     signOut: dynamicAuth.signOut,
     showAuthFlow: dynamicAuth.showAuthFlow,
     hideAuthFlow: dynamicAuth.hideAuthFlow,
-
-    // Legacy compatibility - now using backend username as priority
     userEmail,
     userName,
     walletAddress,
-    setIsAuthenticated: () => {
-      console.warn('setIsAuthenticated is deprecated, authentication is now managed automatically');
-    },
+    setIsAuthenticated: dynamicAuth.setIsAuthenticated,
   };
 
   return (

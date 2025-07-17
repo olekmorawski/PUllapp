@@ -89,9 +89,9 @@ export default function SettingsScreen() {
 
       <ScrollView className="flex-1">
         <Text className="text-xs font-semibold text-gray-500 p-4 pt-6 uppercase">Account</Text>
-        <SettingsItem label="Edit Profile" icon="person-outline" onPress={() => router.push('/(tabs)/profile')} />
-        <SettingsItem label="Top Up" icon="card-outline" onPress={() => router.push('/(tabs)/top-up')} />
-        <SettingsItem label="Auction Settings" icon="card-outline" onPress={() => router.push('/(tabs)/auction-settings')} />
+        <SettingsItem label="Edit Profile" icon="person-outline" onPress={() => router.push('/(app)/profile')} />
+        <SettingsItem label="Top Up" icon="card-outline" onPress={() => router.push('/(app)/top-up')} />
+        <SettingsItem label="Auction Settings" icon="card-outline" onPress={() => router.push('/(app)/auction-settings')} />
 
 
         {/*<Text className="text-xs font-semibold text-gray-500 p-4 pt-6 uppercase">Preferences</Text>*/}

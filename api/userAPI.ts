@@ -23,7 +23,7 @@ export interface UpdateUserResponse {
     user: BackendUser;
 }
 
-// Configure your backend URL
+// Configure your backend URL with fallback
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 // Base API client

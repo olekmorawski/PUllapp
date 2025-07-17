@@ -12,6 +12,30 @@ const MOCK_DRIVER_START_LAT = 37.79000;
 const MOCK_DRIVER_START_LNG = -122.4324;
 
 const TripScreen = () => {
+
+    const isValidNumber = (value: any): value is number => {
+        return typeof value === 'number' && !isNaN(value) && isFinite(value);
+    };
+
+// Safe coordinate validation
+    const isValidCoordinate = (coord: any): coord is [number, number] => {
+        return Array.isArray(coord) &&
+            coord.length === 2 &&
+            isValidNumber(coord[0]) &&
+            isValidNumber(coord[1]) &&
+            coord[1] >= -90 && coord[1] <= 90 &&
+            coord[0] >= -180 && coord[0] <= 180;
+    };
+
+    const isValidCoordinateObject = (coord: any): coord is { latitude: number; longitude: number } => {
+        return coord &&
+            isValidNumber(coord.latitude) &&
+            isValidNumber(coord.longitude) &&
+            coord.latitude >= -90 && coord.latitude <= 90 &&
+            coord.longitude >= -180 && coord.longitude <= 180;
+    };
+
+
     const params = useLocalSearchParams();
     const router = useRouter();
     const socket = useSocket();
@@ -26,8 +50,8 @@ const TripScreen = () => {
     const mapRef = useRef<Mapbox.MapView>(null);
     const directionsService = new DirectionsService();
 
-    const [userPickupCoords, setUserPickupCoords] = useState<Mapbox.Coordinates | null>(null);
-    const [driverCoords, setDriverCoords] = useState<Mapbox.Coordinates>([MOCK_DRIVER_START_LNG, MOCK_DRIVER_START_LAT]);
+    const [userPickupCoords, setUserPickupCoords] = useState<[number, number] | null>(null);
+    const [driverCoords, setDriverCoords] = useState<[number, number]>([MOCK_DRIVER_START_LNG, MOCK_DRIVER_START_LAT]);
     const [routeToPickupGeoJSON, setRouteToPickupGeoJSON] = useState<GeoJSON.Feature | null>(null);
     const [isLoadingRoute, setIsLoadingRoute] = useState(false);
     const [currentLegIndex, setCurrentLegIndex] = useState(0);
@@ -37,7 +61,7 @@ const TripScreen = () => {
 
     useEffect(() => {
         const geocodePickup = async () => {
-            if (pickupAddress === 'Current Location' && currentUserLocation) {
+            if (pickupAddress === 'Current Location' && currentUserLocation && isValidCoordinateObject(currentUserLocation.coords)) {
                 setUserPickupCoords([currentUserLocation.coords.longitude, currentUserLocation.coords.latitude]);
             } else if (typeof pickupAddress === 'string') {
                 try {
@@ -45,22 +69,27 @@ const TripScreen = () => {
                         const parts = pickupAddress.split(',');
                         const lat = parseFloat(parts[0]);
                         const lon = parseFloat(parts[1]);
-                        if (!isNaN(lat) && !isNaN(lon)) {
+                        if (isValidNumber(lat) && isValidNumber(lon)) {
                             setUserPickupCoords([lon, lat]);
                             return;
                         }
                     }
                     console.warn("Cannot determine pickup coordinates for address:", pickupAddress);
-                    if (currentUserLocation) {
-                         setUserPickupCoords([currentUserLocation.coords.longitude, currentUserLocation.coords.latitude]);
+
+                    // Use current location if available and valid
+                    if (currentUserLocation && isValidCoordinateObject(currentUserLocation.coords)) {
+                        setUserPickupCoords([currentUserLocation.coords.longitude, currentUserLocation.coords.latitude]);
                     } else {
+                        // Safe fallback coordinates (San Francisco)
                         setUserPickupCoords([-122.4324, 37.78825]);
                         Alert.alert("Location Issue", "Could not determine exact pickup coordinates. Using a default location.");
                     }
                 } catch (e) {
                     console.error("Error processing pickupAddress:", e);
-                    if (currentUserLocation) {
-                         setUserPickupCoords([currentUserLocation.coords.longitude, currentUserLocation.coords.latitude]);
+                    if (currentUserLocation && isValidCoordinateObject(currentUserLocation.coords)) {
+                        setUserPickupCoords([currentUserLocation.coords.longitude, currentUserLocation.coords.latitude]);
+                    } else {
+                        setUserPickupCoords([-122.4324, 37.78825]);
                     }
                 }
             }
@@ -82,7 +111,7 @@ const TripScreen = () => {
                     );
                     setRouteToPickupGeoJSON(routeData.geoJSON);
                     if (routeData.geoJSON?.geometry?.type === 'LineString' && routeData.geoJSON.geometry.coordinates.length > 0) {
-                        setDriverCoords(routeData.geoJSON.geometry.coordinates[0] as Mapbox.Coordinates);
+                        setDriverCoords(routeData.geoJSON.geometry.coordinates[0] as [number, number]);
                         setCurrentLegIndex(0);
                     } else {
                         setDriverCoords([MOCK_DRIVER_START_LNG, MOCK_DRIVER_START_LAT]);
@@ -100,7 +129,7 @@ const TripScreen = () => {
     useEffect(() => {
         if (!routeToPickupGeoJSON || !userPickupCoords || !socket) return;
 
-        let waypoints: Mapbox.Coordinates[] = [];
+        let waypoints: [number, number][] = [];
         const geometry = routeToPickupGeoJSON.geometry;
 
         if (geometry.type === 'LineString') {

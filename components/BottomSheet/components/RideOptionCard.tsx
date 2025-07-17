@@ -42,7 +42,7 @@ export const RideOptionCard: React.FC<RideOptionCardProps> = ({
                 <View className="flex-row items-center gap-3">
                     <Text className="text-2xl">{option.icon}</Text>
                     <View>
-                        <Text className="font-semibold text-gray-800">{option.type}</Text>
+                        <Text className="font-semibold text-gray-800" children={option.type} />
                         <Text className="text-sm text-gray-500">{option.time} away</Text>
                     </View>
                 </View>

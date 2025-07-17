@@ -241,7 +241,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
 
     const handleSuggestionPress = (rideId: number, range: string) => {
         const numbers = range.match(/\d+/g);
-        if (numbers?.length >= 2) {
+        if (numbers && numbers.length >= 2) {
             const middle = Math.round((+numbers[0] + +numbers[1]) / 2);
             handlePriceChange(rideId, `$${middle}`);
         }

@@ -11,7 +11,7 @@ const LoadingScreen = () => {
     const [statusText, setStatusText] = useState('Finding your driver...');
     const [driverName, setDriverName] = useState('');
     const [driverVehicle, setDriverVehicle] = useState('');
-    const [eta, setEta] = useState(300); // 5 minutes in seconds
+    const [eta, setEta] = useState(10); // 5 minutes in seconds
     const [elapsedTime, setElapsedTime] = useState(0);
     const [driverFound, setDriverFound] = useState(false);
 
@@ -45,7 +45,7 @@ const LoadingScreen = () => {
         } else if (driverFound && eta === 0) {
             console.log('Driver arrived! Navigating to trip screen...');
             router.replace({
-                pathname: '/(tabs)/trip',
+                pathname: '/(app)/trip',
                 params: {
                     price,
                     pickupAddress,
