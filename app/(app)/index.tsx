@@ -63,13 +63,6 @@ export default function RideAppInterface() {
         isLoading: isGettingLocation,
     } = useLocation({ autoStart: true });
 
-    const initialStaticRegion = {
-        latitude: 37.78825,
-        longitude: -122.4324,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-    };
-
     const handleAcceptRide = useCallback((rideId: string) => {
         acceptRide(rideId, {
             onSuccess: (data) => {
@@ -244,7 +237,7 @@ export default function RideAppInterface() {
                 longitudeDelta: 0.01,
             };
         }
-        return initialStaticRegion;
+        return null;
     };
 
     const handleToggleDriverView = () => {
