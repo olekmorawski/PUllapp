@@ -1,14 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { RideOptionCard } from './RideOptionCard';
-
-interface RideOption {
-    id: number;
-    type: string;
-    time: string;
-    suggestedRange: string;
-    icon: string;
-}
+import { RideOption } from "@/components/BottomSheet/types";
 
 interface RideOptionsListProps {
     rideOptions: RideOption[];

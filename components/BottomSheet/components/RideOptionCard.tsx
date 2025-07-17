@@ -1,14 +1,7 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
-interface RideOption {
-    id: number;
-    type: string;
-    time: string;
-    suggestedRange: string;
-    icon: string;
-}
+import { RideOption } from '../types'; // Import from types file
 
 interface RideOptionCardProps {
     option: RideOption;
@@ -42,7 +35,7 @@ export const RideOptionCard: React.FC<RideOptionCardProps> = ({
                 <View className="flex-row items-center gap-3">
                     <Text className="text-2xl">{option.icon}</Text>
                     <View>
-                        <Text className="font-semibold text-gray-800" children={option.type} />
+                        <Text className="font-semibold text-gray-800" children={option.name || option.type} />
                         <Text className="text-sm text-gray-500">{option.time} away</Text>
                     </View>
                 </View>

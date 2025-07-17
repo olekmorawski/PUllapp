@@ -3,6 +3,7 @@ export interface BackendUser {
     email: string;
     username: string;
     walletAddress?: string;
+    isDriver?: boolean; // Add this property
     createdAt: string;
     updatedAt: string;
 }

@@ -150,6 +150,7 @@ export const useDynamicAuth = () => {
         isAuthenticated,
         dynamicUser,
         isLoading,
+        setIsAuthenticated,
 
         // Methods
         sendEmailOTP,

@@ -81,7 +81,7 @@ export default function OTPScreen() {
               {otp.map((digit, index) => (
                   <TextInput
                       key={index}
-                      ref={(ref) => (inputRefs.current[index] = ref)}
+                      ref={(ref) => { inputRefs.current[index] = ref; }}
                       className={`border ${otpError ? 'border-red-500' : 'border-gray-300'} w-12 h-14 rounded-lg text-center text-xl bg-white text-gray-700`}
                       value={digit}
                       onChangeText={(text) => handleOtpChange(text, index)}

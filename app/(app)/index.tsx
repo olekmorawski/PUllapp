@@ -41,8 +41,11 @@ export default function RideAppInterface() {
 
     // Driver-specific states
     const { data: availableRidesData, isLoading: isLoadingRides, refetch: fetchAvailableRides } = useGetAvailableRides({ enabled: isDriverViewActive });
-    const { mutate: acceptRide, isPending: isAcceptingRide } = useAcceptRide();
+    const { mutate: acceptRide, isPending: isAcceptingRideBoolean } = useAcceptRide();
     const availableRides = availableRidesData?.rides || [];
+
+    // Track which specific ride is being accepted
+    const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
 
     // Driver route states
     const [driverToClientRouteGeoJSON, setDriverToClientRouteGeoJSON] = useState<GeoJSON.Feature | null>(null);
@@ -50,7 +53,15 @@ export default function RideAppInterface() {
 
     // Define sample ride options
     const sampleRideOptions = [
-        { id: 1, type: 'Standard', time: '5 min', suggestedRange: '$10-12', icon: 'car' },
+        {
+            id: 1,
+            name: 'Standard',
+            type: 'standard',
+            time: '5 min',
+            price: '$12.00',
+            suggestedRange: '$10-12',
+            icon: '🚗'
+        },
     ];
 
     const mapRef = useRef<Mapbox.MapView>(null);
@@ -64,9 +75,13 @@ export default function RideAppInterface() {
     } = useLocation({ autoStart: true });
 
     const handleAcceptRide = useCallback(async (rideId: string) => {
+        setAcceptingRideId(rideId); // Set the specific ride being accepted
+
         acceptRide(rideId, {
             onSuccess: (data) => {
                 const acceptedRide = data.ride;
+                setAcceptingRideId(null); // Clear the accepting state
+
                 Alert.alert(
                     'Ride Accepted!',
                     `You have successfully accepted the ride from ${acceptedRide.originAddress} to ${acceptedRide.destinationAddress}.`,
@@ -84,6 +99,8 @@ export default function RideAppInterface() {
                 console.log('Successfully accepted ride:', acceptedRide);
             },
             onError: (error: any) => {
+                setAcceptingRideId(null); // Clear the accepting state on error
+
                 console.error('Error accepting ride:', error);
                 Alert.alert(
                     'Failed to Accept Ride',
@@ -309,7 +326,7 @@ export default function RideAppInterface() {
                         onRejectRide={handleRejectRide}
                         onRefresh={handleRefreshRides}
                         isLoading={isLoadingRides}
-                        isAcceptingRide={isAcceptingRide}
+                        isAcceptingRide={acceptingRideId}
                     />
                 </>
             ) : (
