@@ -13,7 +13,7 @@ import { DirectionsService } from '@/components/DirectionsService';
 import {useLocation} from "@/hooks/Location/useLocation";
 
 // API Base URL - update this to match your backend
-const API_BASE_URL = 'http://localhost:3001';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
 interface LocationData {
     coordinates: {

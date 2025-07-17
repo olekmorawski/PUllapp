@@ -24,7 +24,7 @@ export interface UpdateUserResponse {
 }
 
 // Configure your backend URL
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 // Base API client
 class UserAPIClient {

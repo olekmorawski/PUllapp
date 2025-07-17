@@ -43,7 +43,7 @@ interface CreateRideResponse {
 // Mock API function - replace with your actual API call
 const createRideAPI = async (rideData: CreateRideParams): Promise<CreateRideResponse> => {
     // Replace this with your actual API endpoint
-    const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+    const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
     const response = await fetch(`${BACKEND_URL}/api/rides/create`, {
         method: 'POST',
