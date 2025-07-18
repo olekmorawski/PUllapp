@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { placesService } from './LocationService';
-import {PlaceResult} from "@/components/BottomSheet/types";
+import { PlaceResult } from "@/components/BottomSheet/types";
 
 interface UsePlacesSearchOptions {
     debounceDelay?: number;
@@ -63,12 +63,11 @@ export const usePlacesSearch = (options: UsePlacesSearchOptions = {}): UsePlaces
         abortController.current = new AbortController();
 
         try {
-            const results = await placesService.searchPlaces(query, {
+            // Use autocomplete search for better real-time experience
+            const results = await placesService.autocompleteSearch(query, {
                 limit,
                 location: proximity || undefined,
-                sessionId: `search-${Date.now()}`,
                 language: 'en',
-                types: 'establishment,address'
             });
 
             // Check if search was cancelled
@@ -89,6 +88,10 @@ export const usePlacesSearch = (options: UsePlacesSearchOptions = {}): UsePlaces
                         friendlyMessage = 'No places found matching your search.';
                     } else if (error.message.toLowerCase().includes('network') || error.message.includes('Failed to fetch')) {
                         friendlyMessage = 'Network error. Please check your connection.';
+                    } else if (error.message.includes('OVER_QUERY_LIMIT')) {
+                        friendlyMessage = 'Search limit reached. Please try again later.';
+                    } else if (error.message.includes('REQUEST_DENIED')) {
+                        friendlyMessage = 'Search service unavailable. Please try again.';
                     } else if (error.message.startsWith('Places API Error:')) {
                         friendlyMessage = error.message;
                     }

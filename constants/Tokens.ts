@@ -1,1 +1,1 @@
-export const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1Ijoib2xla21vcmF3c2tpIiwiYSI6ImNtY21jaXZnYTBnaTAybHMzMWp4cnB2MmYifQ.gmAgP14PfVyDhelFkHeFsg';
+export const GOOGLE_MAPS_API_KEY = 'AIzaSyAwrnA0SWKH89KLa-v2RGfEx7akD8nX48c';

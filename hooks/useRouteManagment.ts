@@ -12,7 +12,7 @@ interface UseRouteManagementProps {
     setIsLoadingRoute: (loading: boolean) => void;
 }
 
-export const useRouteManagement = ({
+export const useRouteMagement = ({
                                        origin,
                                        destination,
                                        setRouteGeoJSON,

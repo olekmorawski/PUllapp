@@ -1,10 +1,11 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import Mapbox from '@rnmapbox/maps';
-import { MapboxMap } from '@/components/MapboxMap';
+import { ExpoMapComponent } from '@/components/ExpoMap';
+import { Marker } from 'expo-maps';
+import ExpoMap from 'expo-maps';
 
 interface TripMapProps {
-    mapRef: React.RefObject<Mapbox.MapView | null>;
+    mapRef: React.RefObject<ExpoMap | null>;
     initialRegion: {
         latitude: number;
         longitude: number;
@@ -29,34 +30,42 @@ export const TripMap: React.FC<TripMapProps> = ({
     const markerTextClasses = "text-white font-bold text-xs";
 
     return (
-        <MapboxMap
+        <ExpoMapComponent
             mapRef={mapRef}
             initialRegion={initialRegion}
-            origin={driverCoords ? { longitude: driverCoords[0], latitude: driverCoords[1]} : undefined}
-            destination={userPickupCoords ? { longitude: userPickupCoords[0], latitude: userPickupCoords[1]} : undefined}
+            origin={driverCoords ? { longitude: driverCoords[0], latitude: driverCoords[1] } : undefined}
+            destination={userPickupCoords ? { longitude: userPickupCoords[0], latitude: userPickupCoords[1] } : undefined}
             routeGeoJSON={routeToPickupGeoJSON}
             showUserLocation={true}
         >
             {userPickupCoords && (
-                <Mapbox.PointAnnotation
-                    id="pickupPoint"
-                    coordinate={userPickupCoords}
+                <Marker
+                    coordinate={{
+                        latitude: userPickupCoords[1],
+                        longitude: userPickupCoords[0],
+                    }}
+                    title="Pickup Location"
+                    identifier="pickupPoint"
                 >
                     <View className={pickupMarkerClasses}>
                         <Text className={markerTextClasses}>P</Text>
                     </View>
-                </Mapbox.PointAnnotation>
+                </Marker>
             )}
             {driverCoords && (
-                <Mapbox.PointAnnotation
-                    id="driverLocation"
-                    coordinate={driverCoords}
+                <Marker
+                    coordinate={{
+                        latitude: driverCoords[1],
+                        longitude: driverCoords[0],
+                    }}
+                    title="Driver Location"
+                    identifier="driverLocation"
                 >
                     <View className={driverMarkerClasses}>
                         <Text className={markerTextClasses}>D</Text>
                     </View>
-                </Mapbox.PointAnnotation>
+                </Marker>
             )}
-        </MapboxMap>
+        </ExpoMapComponent>
     );
 };

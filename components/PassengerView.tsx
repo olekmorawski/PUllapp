@@ -1,14 +1,15 @@
 // components/PassengerView.tsx
 import React from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
-import { MapboxMap } from '@/components/MapboxMap';
+import { ExpoMapComponent } from '@/components/ExpoMap';
 import { BottomSheet } from '@/components/BottomSheet/BottomSheet';
 import { LocationData } from '@/hooks/useRideAppState';
-import Mapbox from '@rnmapbox/maps';
+import ExpoMap from 'expo-maps';
+import * as Location from 'expo-location';
 
 interface PassengerViewProps {
     // Map props
-    mapRef: React.Ref<Mapbox.MapView>;
+    mapRef: React.Ref<ExpoMap>;
     initialRegion?: {
         latitude: number;
         longitude: number;
@@ -18,7 +19,7 @@ interface PassengerViewProps {
     origin?: LocationData | null;
     destination?: LocationData | null;
     routeGeoJSON?: GeoJSON.Feature | null;
-    onLocationUpdate?: (location: Mapbox.Location) => void;
+    onLocationUpdate?: (location: Location.LocationObject) => void;
 
     // Route info
     routeInfo?: {
@@ -52,7 +53,7 @@ export const PassengerView: React.FC<PassengerViewProps> = ({
                                                             }) => {
     return (
         <>
-            <MapboxMap
+            <ExpoMapComponent
                 mapRef={mapRef}
                 initialRegion={initialRegion}
                 origin={origin?.coordinates}

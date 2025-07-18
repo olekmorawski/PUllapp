@@ -1,13 +1,13 @@
 // components/DriverView.tsx
 import React from 'react';
-import { MapboxMap } from '@/components/MapboxMap';
+import { ExpoMapComponent } from '@/components/ExpoMap';
 import { DriverBottomSheet } from '@/components/DriverBottomSheet';
 import { AvailableRide } from '@/api/rideAPI';
-import Mapbox from '@rnmapbox/maps';
+import ExpoMap from 'expo-maps';
 
 interface DriverViewProps {
     // Map props
-    mapRef: React.Ref<Mapbox.MapView>;
+    mapRef: React.Ref<ExpoMap>;
     initialRegion?: {
         latitude: number;
         longitude: number;
@@ -38,7 +38,7 @@ export const DriverView: React.FC<DriverViewProps> = ({
                                                       }) => {
     return (
         <>
-            <MapboxMap
+            <ExpoMapComponent
                 mapRef={mapRef}
                 initialRegion={initialRegion}
                 showUserLocation={true}

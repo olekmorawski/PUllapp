@@ -2,10 +2,10 @@ import React, { useRef, useEffect } from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Mapbox from '@rnmapbox/maps';
+import ExpoMap from 'expo-maps';
 import { useRideAppState } from '@/hooks/useRideAppState';
-import {useRideManagement} from "@/hooks/useRideManagment";
-import {useRouteManagement} from "@/hooks/useRouteManagment";
+import { useRideManagement } from "@/hooks/useRideManagment";
+import {useRouteMagement} from "@/hooks/useRouteManagment";
 import { useLocationSetup } from '@/hooks/useLocationSetup';
 import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar/Sidebar';
@@ -26,7 +26,7 @@ const sampleRideOptions = [
 
 export default function RideAppInterface() {
     const router = useRouter();
-    const mapRef = useRef<Mapbox.MapView>(null);
+    const mapRef = useRef<ExpoMap>(null);
 
     const {
         isSidebarVisible,
@@ -58,7 +58,7 @@ export default function RideAppInterface() {
         onLocationSelect: handleLocationSelect,
     });
 
-    useRouteManagement({
+    useRouteMagement({
         origin,
         destination,
         setRouteGeoJSON,
