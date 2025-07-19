@@ -1,10 +1,9 @@
 import React from 'react';
-import { View, Text } from 'react-native';
-import Mapbox from '@rnmapbox/maps';
-import { MapboxMap } from '@/components/MapboxMap';
+import { ExpoMapComponent } from '@/components/ExpoMapComponent';
+import {Geometry, Feature} from "geojson";
 
 interface TripMapProps {
-    mapRef: React.RefObject<Mapbox.MapView | null>;
+    mapRef: React.RefObject<any>; // Changed from Mapbox.MapView
     initialRegion: {
         latitude: number;
         longitude: number;
@@ -13,7 +12,7 @@ interface TripMapProps {
     };
     driverCoords: [number, number] | null;
     userPickupCoords: [number, number] | null;
-    routeToPickupGeoJSON: GeoJSON.Feature | null;
+    routeToPickupGeoJSON: Feature<Geometry> | null;
 }
 
 export const TripMap: React.FC<TripMapProps> = ({
@@ -23,40 +22,25 @@ export const TripMap: React.FC<TripMapProps> = ({
                                                     userPickupCoords,
                                                     routeToPickupGeoJSON,
                                                 }) => {
-    const markerBaseClasses = "w-[30px] h-[30px] rounded-full justify-center items-center border-2 border-white shadow-md";
-    const pickupMarkerClasses = `${markerBaseClasses} bg-blue-500`;
-    const driverMarkerClasses = `${markerBaseClasses} bg-red-500`;
-    const markerTextClasses = "text-white font-bold text-xs";
+    // Convert array coordinates to object format
+    const driverLocation = driverCoords ? {
+        latitude: driverCoords[1],
+        longitude: driverCoords[0]
+    } : null;
+
+    const pickupLocation = userPickupCoords ? {
+        latitude: userPickupCoords[1],
+        longitude: userPickupCoords[0]
+    } : null;
 
     return (
-        <MapboxMap
+        <ExpoMapComponent
             mapRef={mapRef}
             initialRegion={initialRegion}
-            origin={driverCoords ? { longitude: driverCoords[0], latitude: driverCoords[1]} : undefined}
-            destination={userPickupCoords ? { longitude: userPickupCoords[0], latitude: userPickupCoords[1]} : undefined}
+            origin={driverLocation}
+            destination={pickupLocation}
             routeGeoJSON={routeToPickupGeoJSON}
             showUserLocation={true}
-        >
-            {userPickupCoords && (
-                <Mapbox.PointAnnotation
-                    id="pickupPoint"
-                    coordinate={userPickupCoords}
-                >
-                    <View className={pickupMarkerClasses}>
-                        <Text className={markerTextClasses}>P</Text>
-                    </View>
-                </Mapbox.PointAnnotation>
-            )}
-            {driverCoords && (
-                <Mapbox.PointAnnotation
-                    id="driverLocation"
-                    coordinate={driverCoords}
-                >
-                    <View className={driverMarkerClasses}>
-                        <Text className={markerTextClasses}>D</Text>
-                    </View>
-                </Mapbox.PointAnnotation>
-            )}
-        </MapboxMap>
+        />
     );
 };

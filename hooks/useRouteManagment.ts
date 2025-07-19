@@ -3,11 +3,12 @@ import { useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { DirectionsService } from '@/components/DirectionsService';
 import { LocationData } from './useRideAppState';
+import {Feature} from "geojson";
 
 interface UseRouteManagementProps {
     origin: LocationData | null;
     destination: LocationData | null;
-    setRouteGeoJSON: (route: GeoJSON.Feature | null) => void;
+    setRouteGeoJSON: (route: Feature | null) => void;
     setRouteInfo: (info: any) => void;
     setIsLoadingRoute: (loading: boolean) => void;
 }

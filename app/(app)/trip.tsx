@@ -3,8 +3,7 @@ import React, { useRef } from 'react';
 import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Mapbox from '@rnmapbox/maps';
-
+import {ExpoMapComponent} from "@/components/ExpoMapComponent";
 // Custom hooks
 import { useTripState } from '@/hooks/useTripState';
 import { usePickupGeocoding } from '@/hooks/usePickupGeocoding';
@@ -15,7 +14,7 @@ import { useDriverMovement } from '@/hooks/useDriverMovement';
 import { TripMap, TripInfo } from '@/components/trip';
 
 const TripScreen = () => {
-    const mapRef = useRef<Mapbox.MapView>(null);
+    const mapRef = useRef<any>(null);
 
     // Main trip state
     const {

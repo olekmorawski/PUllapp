@@ -2,7 +2,6 @@ import React, { useRef, useEffect } from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Mapbox from '@rnmapbox/maps';
 import { useRideAppState } from '@/hooks/useRideAppState';
 import {useRideManagement} from "@/hooks/useRideManagment";
 import {useRouteManagement} from "@/hooks/useRouteManagment";
@@ -26,7 +25,7 @@ const sampleRideOptions = [
 
 export default function RideAppInterface() {
     const router = useRouter();
-    const mapRef = useRef<Mapbox.MapView>(null);
+    const mapRef = useRef<any>(null);
 
     const {
         isSidebarVisible,
