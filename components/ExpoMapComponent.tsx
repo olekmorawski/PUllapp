@@ -1,24 +1,16 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { AppleMaps, GoogleMaps } from 'expo-maps';
 import * as Location from 'expo-location';
-
-// Fix 1: Install GeoJSON types
-// Run: npm install --save-dev @types/geojson
-// Then import:
 import type { Feature, LineString, Geometry } from 'geojson';
 
-// Fix 2: Proper type definitions for map components
 type MapProvider = typeof AppleMaps | typeof GoogleMaps;
-// Use React.ComponentType to get the component type
-type MapViewComponent = React.ComponentType<any>; // We'll use 'any' since expo-maps doesn't export proper types yet
+type MapViewComponent = React.ComponentType<any>;
 
-// Safe number validation
 const isValidNumber = (value: any): value is number => {
     return typeof value === 'number' && !isNaN(value) && isFinite(value);
 };
 
-// Safe coordinate validation
 const isValidCoordinate = (coord: any): coord is { latitude: number; longitude: number } => {
     return coord &&
         isValidNumber(coord.latitude) &&
@@ -27,14 +19,13 @@ const isValidCoordinate = (coord: any): coord is { latitude: number; longitude: 
         coord.longitude >= -180 && coord.longitude <= 180;
 };
 
-// Convert latitude delta to zoom level (approximate)
 const deltaToZoom = (latitudeDelta: number) => {
     if (!isValidNumber(latitudeDelta) || latitudeDelta <= 0) return 12;
     return Math.round(Math.log2(360 / latitudeDelta));
 };
 
 interface Props {
-    mapRef: React.Ref<any>; // Since expo-maps doesn't export proper types
+    mapRef: React.Ref<any>;
     initialRegion?: {
         latitude: number;
         longitude: number;
@@ -53,9 +44,7 @@ interface Props {
     children?: React.ReactNode;
 }
 
-// Convert GeoJSON to coordinates array
 const extractCoordinatesFromGeoJSON = (geoJSON: Feature<Geometry>): { latitude: number; longitude: number }[] => {
-    // Runtime check for LineString geometry type
     if (geoJSON.geometry.type === 'LineString') {
         const lineString = geoJSON.geometry as LineString;
         return lineString.coordinates.map(([lng, lat]) => ({
@@ -84,7 +73,6 @@ export const ExpoMapComponent: React.FC<Props> = ({
     const [isLoading, setIsLoading] = useState(false);
     const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
 
-    // Choose the appropriate map provider based on platform
     const MapProvider: MapProvider = Platform.OS === 'ios' ? AppleMaps : GoogleMaps;
     const MapView = MapProvider.View as MapViewComponent;
 
@@ -308,6 +296,3 @@ const styles = StyleSheet.create({
         zIndex: 1000,
     },
 });
-
-// Re-export with the old name for backward compatibility during migration
-export const MapboxMap = ExpoMapComponent;
