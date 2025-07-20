@@ -90,40 +90,60 @@ export const ExpoMapComponent: React.FC<Props> = ({
 
     // Handle location permissions and updates
     useEffect(() => {
-        if (showUserLocation) {
-            const setupLocation = async () => {
-                try {
-                    const { status } = await Location.requestForegroundPermissionsAsync();
-                    if (status === 'granted') {
-                        const location = await Location.getCurrentPositionAsync({});
-                        setUserLocation(location);
-                        onLocationUpdate?.(location);
+        if (!showUserLocation) return;
 
-                        // Set up location watching
-                        const subscription = await Location.watchPositionAsync(
-                            {
-                                accuracy: Location.Accuracy.High,
-                                timeInterval: 1000,
-                                distanceInterval: 10,
-                            },
-                            (newLocation) => {
-                                setUserLocation(newLocation);
-                                onLocationUpdate?.(newLocation);
-                            }
-                        );
+        let isSubscribed = true;
+        let locationSubscription: Location.LocationSubscription | null = null;
 
-                        return () => {
-                            subscription.remove();
-                        };
-                    }
-                } catch (error) {
-                    console.error('Location error:', error);
+        const setupLocation = async () => {
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== 'granted' || !isSubscribed) {
+                    return;
                 }
-            };
 
-            setupLocation();
-        }
-    }, [showUserLocation, onLocationUpdate]);
+                // Get initial location
+                const location = await Location.getCurrentPositionAsync({
+                    accuracy: Location.Accuracy.Balanced, // Use Balanced instead of High for better performance
+                });
+
+                if (isSubscribed) {
+                    setUserLocation(location);
+                    onLocationUpdate?.(location);
+                }
+
+                // Set up location watching
+                locationSubscription = await Location.watchPositionAsync(
+                    {
+                        accuracy: Location.Accuracy.Balanced,
+                        timeInterval: 5000, // Update every 5 seconds instead of every second
+                        distanceInterval: 50, // Update only if moved 50 meters instead of 10
+                    },
+                    (newLocation) => {
+                        if (isSubscribed) {
+                            setUserLocation(newLocation);
+                            onLocationUpdate?.(newLocation);
+                        }
+                    }
+                );
+            } catch (error) {
+                // Only log error if component is still mounted
+                if (isSubscribed) {
+                    console.error('Location setup error:', error);
+                }
+            }
+        };
+
+        setupLocation();
+
+        // Cleanup function
+        return () => {
+            isSubscribed = false;
+            if (locationSubscription) {
+                locationSubscription.remove();
+            }
+        };
+    }, [showUserLocation]); // Remove onLocationUpdate from dependencies to prevent re-runs
 
     // Calculate initial camera position
     const getInitialCamera = () => {

@@ -1,14 +1,13 @@
 // hooks/useRouteManagement.ts
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 import { Alert } from 'react-native';
 import { DirectionsService } from '@/components/DirectionsService';
 import { LocationData } from './useRideAppState';
-import {Feature} from "geojson";
 
 interface UseRouteManagementProps {
     origin: LocationData | null;
     destination: LocationData | null;
-    setRouteGeoJSON: (route: Feature | null) => void;
+    setRouteGeoJSON: (route: any | null) => void; // Update type as needed
     setRouteInfo: (info: any) => void;
     setIsLoadingRoute: (loading: boolean) => void;
 }
@@ -20,7 +19,8 @@ export const useRouteManagement = ({
                                        setRouteInfo,
                                        setIsLoadingRoute,
                                    }: UseRouteManagementProps) => {
-    const directionsService = new DirectionsService();
+    // Create DirectionsService instance once using useMemo
+    const directionsService = useMemo(() => new DirectionsService(), []);
 
     const calculateRoute = useCallback(async () => {
         if (!origin || !destination) {
@@ -59,7 +59,7 @@ export const useRouteManagement = ({
         } finally {
             setIsLoadingRoute(false);
         }
-    }, [origin, destination, directionsService, setRouteGeoJSON, setRouteInfo, setIsLoadingRoute]);
+    }, [origin, destination, setRouteGeoJSON, setRouteInfo, setIsLoadingRoute, directionsService]);
 
     // Calculate route when origin/destination changes
     useEffect(() => {
