@@ -32,6 +32,14 @@ export default function TabLayout() {
                     title: "Trip Status" // Default title, can be overridden in trip.tsx
                 }}
             />
+            <Stack.Screen
+                name="driver-navigation"
+                options={{
+                    headerShown: false,
+                    presentation: 'fullScreenModal',
+                    animation: 'slide_from_bottom',
+                }}
+            />
             {/*
               Note: By not specifying `options` here for history, profile, etc.,
               we rely on the `Stack.Screen` options defined within each of those screen files themselves.

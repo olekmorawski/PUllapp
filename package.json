@@ -18,6 +18,7 @@
     "@dynamic-labs/viem-extension": "^4.21.1",
     "@dynamic-labs/zerodev-extension": "^4.21.1",
     "@expo/vector-icons": "^14.1.0",
+    "@googlemaps/react-native-navigation-sdk": "^0.9.3",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",
