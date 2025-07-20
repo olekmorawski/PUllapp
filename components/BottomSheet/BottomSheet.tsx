@@ -1,6 +1,6 @@
 // Update your BottomSheet component to integrate the useCreateRide hook
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Dimensions,
@@ -55,9 +55,20 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     const [selectedRide, setSelectedRide] = useState<RideOption | null>(null);
     const [customPrices, setCustomPrices] = useState<{ [key: number]: string }>({});
 
+    // ✅ OPTIMIZATION - Rate limiting for search inputs
+    const [lastSearchTime, setLastSearchTime] = useState<Record<string, number>>({});
+    const [lastReverseGeocodedLocation, setLastReverseGeocodedLocation] = useState<{
+        latitude: number;
+        longitude: number;
+    } | null>(null);
+
     // Animation refs
     const translateY = useSharedValue(MIN_TRANSLATE_Y);
     const startY = useRef(0);
+
+    // Constants for optimization
+    const MIN_SEARCH_INTERVAL = 500; // Minimum 500ms between searches
+    const MIN_REVERSE_GEOCODE_DISTANCE = 100; // 100 meters minimum for reverse geocoding
 
     // Hooks
     const {
@@ -67,6 +78,18 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         getCurrentLocation
     } = useLocation({ autoStart: true });
 
+    // ✅ OPTIMIZATION - Stabilize proximity to prevent micro-changes from triggering searches
+    const stableProximity = useMemo(() => {
+        const coords = location?.coords || userLocation?.coords;
+        if (!coords) return null;
+
+        // Round to 4 decimal places (~11 meters precision)
+        return {
+            latitude: Math.round(coords.latitude * 10000) / 10000,
+            longitude: Math.round(coords.longitude * 10000) / 10000
+        };
+    }, [location?.coords?.latitude, location?.coords?.longitude, userLocation?.coords?.latitude, userLocation?.coords?.longitude]);
+
     const {
         searchResults,
         isSearching,
@@ -74,7 +97,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         search,
         clearResults
     } = usePlacesSearch({
-        proximity: location?.coords || userLocation?.coords,
+        proximity: stableProximity, // ✅ Use stabilized proximity
         debounceDelay: 300,
         minSearchLength: 2
     });
@@ -126,6 +149,36 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         }
     });
 
+    // ✅ OPTIMIZATION - Helper function to calculate distance
+    const getDistance = useCallback((lat1: number, lon1: number, lat2: number, lon2: number): number => {
+        const R = 6371e3; // Earth's radius in meters
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c;
+    }, []);
+
+    // ✅ OPTIMIZATION - Check if reverse geocoding should be performed
+    const shouldReverseGeocode = useCallback((coords: { latitude: number; longitude: number }): boolean => {
+        if (!lastReverseGeocodedLocation) return true;
+
+        const distance = getDistance(
+            lastReverseGeocodedLocation.latitude,
+            lastReverseGeocodedLocation.longitude,
+            coords.latitude,
+            coords.longitude
+        );
+
+        return distance > MIN_REVERSE_GEOCODE_DISTANCE;
+    }, [lastReverseGeocodedLocation, getDistance]);
+
     // Initial location fetch
     useEffect(() => {
         if (!currentLocation && !selectedOrigin && location) {
@@ -142,8 +195,25 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     const handleGetCurrentLocation = useCallback(async () => {
         try {
             await getCurrentLocation();
-            if (location) {
+            if (location && shouldReverseGeocode(location.coords)) {
                 const address = await reverseGeocode(location.coords);
+                const locData: LocationData = {
+                    coordinates: location.coords,
+                    address,
+                    isCurrentLocation: true
+                };
+                setCurrentLocation(address);
+                setSelectedOrigin(locData);
+                onLocationSelect?.('origin', locData);
+
+                // ✅ Update last reverse geocoded location
+                setLastReverseGeocodedLocation({
+                    latitude: location.coords.latitude,
+                    longitude: location.coords.longitude
+                });
+            } else if (location) {
+                // Use coordinate string if reverse geocoding is skipped
+                const address = `Current Location (${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)})`;
                 const locData: LocationData = {
                     coordinates: location.coords,
                     address,
@@ -156,15 +226,26 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         } catch (error) {
             Alert.alert('Location Error', 'Could not retrieve current location.');
         }
-    }, [location, reverseGeocode]);
+    }, [location, reverseGeocode, shouldReverseGeocode, onLocationSelect]);
 
+    // ✅ OPTIMIZATION - Add rate limiting to search input changes
     const handleSearchInputChange = useCallback((text: string, type: 'origin' | 'destination') => {
         setSearchQuery(text);
         if (type === 'origin') setCurrentLocation(text);
         else setDestination(text);
 
+        // Rate limiting check
+        const now = Date.now();
+        const lastSearch = lastSearchTime[type] || 0;
+
+        if (now - lastSearch < MIN_SEARCH_INTERVAL && text.length > 0) {
+            // Too soon, skip this search
+            return;
+        }
+
+        setLastSearchTime(prev => ({ ...prev, [type]: now }));
         search(text);
-    }, [search]);
+    }, [search, lastSearchTime]);
 
     const handlePlaceSelect = useCallback(async (place: PlaceResult) => {
         if (!activeSearchType) return;
@@ -186,7 +267,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         onLocationSelect?.(activeSearchType, locationData);
         clearResults();
         setActiveSearchType(null);
-    }, [activeSearchType, addRecentSearch, clearResults]);
+    }, [activeSearchType, addRecentSearch, clearResults, onLocationSelect]);
 
     const saveFavoriteLocation = useCallback(async (key: string) => {
         const location = activeSearchType === 'origin' ? selectedOrigin : selectedDestination;

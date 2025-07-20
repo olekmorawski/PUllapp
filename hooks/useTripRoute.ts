@@ -1,5 +1,5 @@
 // hooks/useTripRoute.ts
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Alert } from 'react-native';
 import { DirectionsService } from '@/components/DirectionsService';
 
@@ -22,8 +22,7 @@ export const useTripRoute = ({
                                  setCurrentLegIndex,
                                  setIsLoadingRoute,
                              }: UseTripRouteProps) => {
-    const directionsService = new DirectionsService();
-
+    const directionsService = useMemo(() => new DirectionsService(), []);
     useEffect(() => {
         const initialDriverLocationForRoute = {
             longitude: driverStartLng,
@@ -58,7 +57,7 @@ export const useTripRoute = ({
 
             calculateRoute();
         }
-    }, [userPickupCoords, driverStartLat, driverStartLng, setRouteToPickupGeoJSON, setDriverCoords, setCurrentLegIndex, setIsLoadingRoute]);
+    }, [userPickupCoords, driverStartLat, driverStartLng, setRouteToPickupGeoJSON, setDriverCoords, setCurrentLegIndex, setIsLoadingRoute, directionsService]);
 
     return {
         directionsService,

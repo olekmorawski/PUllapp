@@ -6,6 +6,8 @@ interface UseLocationOptions {
     timeout?: number;
     maximumAge?: number;
     autoStart?: boolean;
+    watchTimeInterval?: number;
+    watchDistanceInterval?: number;
 }
 
 interface UseLocationResult {
@@ -24,7 +26,10 @@ export const useLocation = (options: UseLocationOptions = {}): UseLocationResult
         enableHighAccuracy = true,
         timeout = 5000,
         maximumAge = 1000,
-        autoStart = false
+        autoStart = false,
+        // ✅ OPTIMIZED - More conservative defaults to reduce API usage
+        watchTimeInterval = 10000, // 10 seconds instead of 1 second
+        watchDistanceInterval = 100, // 100 meters instead of 10 meters
     } = options;
 
     const [location, setLocation] = useState<Location.LocationObject | null>(null);
@@ -96,11 +101,11 @@ export const useLocation = (options: UseLocationOptions = {}): UseLocationResult
                 throw new Error('Location permission denied');
             }
 
-            // Get location with timeout
+            // ✅ OPTIMIZED - Use balanced accuracy for better battery life and performance
             const locationPromise = Location.getCurrentPositionAsync({
                 accuracy: enableHighAccuracy
-                    ? Location.Accuracy.High
-                    : Location.Accuracy.Balanced,
+                    ? Location.Accuracy.Balanced // Changed from High to Balanced
+                    : Location.Accuracy.Low,
             });
 
             const timeoutPromise = new Promise<never>((_, reject) =>
@@ -141,13 +146,14 @@ export const useLocation = (options: UseLocationOptions = {}): UseLocationResult
                 }
             }
 
+            // ✅ OPTIMIZED - Less aggressive location watching settings
             const subscription = await Location.watchPositionAsync(
                 {
                     accuracy: enableHighAccuracy
-                        ? Location.Accuracy.High
-                        : Location.Accuracy.Balanced,
-                    timeInterval: 1000,
-                    distanceInterval: 10,
+                        ? Location.Accuracy.Balanced // Changed from High to Balanced
+                        : Location.Accuracy.Low,
+                    timeInterval: watchTimeInterval, // Now configurable, defaults to 10 seconds
+                    distanceInterval: watchDistanceInterval, // Now configurable, defaults to 100 meters
                 },
                 (newLocation) => {
                     setLocation(newLocation);
@@ -160,7 +166,7 @@ export const useLocation = (options: UseLocationOptions = {}): UseLocationResult
             const errorMessage = err instanceof Error ? err.message : 'Failed to watch location';
             setError(new Error(errorMessage));
         }
-    }, [hasPermission, requestPermission, enableHighAccuracy]);
+    }, [hasPermission, requestPermission, enableHighAccuracy, watchTimeInterval, watchDistanceInterval]);
 
     const stopWatching = useCallback(() => {
         if (watchSubscription) {

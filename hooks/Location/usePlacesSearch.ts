@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { placesService } from './LocationService';
 import {PlaceResult} from "@/components/BottomSheet/types";
 
@@ -29,8 +29,17 @@ export const usePlacesSearch = (options: UsePlacesSearchOptions = {}): UsePlaces
     const [searchResults, setSearchResults] = useState<PlaceResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
-    const searchTimeout = useRef<number | null>(null);
+    const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortController = useRef<AbortController | null>(null);
+
+    // ✅ OPTIMIZED - Memoize proximity to prevent unnecessary recreations from micro-changes
+    const stableProximity = useMemo(() => {
+        if (!proximity) return null;
+        return {
+            latitude: Math.round(proximity.latitude * 10000) / 10000,
+            longitude: Math.round(proximity.longitude * 10000) / 10000
+        };
+    }, [proximity?.latitude, proximity?.longitude]);
 
     // Cleanup on unmount
     useEffect(() => {
@@ -65,7 +74,7 @@ export const usePlacesSearch = (options: UsePlacesSearchOptions = {}): UsePlaces
         try {
             const results = await placesService.searchPlaces(query, {
                 limit,
-                location: proximity || undefined,
+                location: stableProximity || undefined, // ✅ Use stabilized proximity
                 sessionId: `search-${Date.now()}`,
                 language: 'en',
                 types: 'establishment,address'
@@ -102,7 +111,7 @@ export const usePlacesSearch = (options: UsePlacesSearchOptions = {}): UsePlaces
                 setIsSearching(false);
             }
         }
-    }, [minSearchLength, limit, proximity]);
+    }, [minSearchLength, limit, stableProximity]); // ✅ Use stableProximity instead of proximity
 
     const search = useCallback((query: string) => {
         // Clear previous timeout
