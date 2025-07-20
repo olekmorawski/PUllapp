@@ -1,10 +1,12 @@
-import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
+// components/DirectionsService.tsx
+
+import {Geometry, Feature} from "geojson";
 
 interface RouteOptions {
-    profile?: 'driving' | 'walking' | 'cycling' | 'driving-traffic';
+    mode?: 'driving' | 'walking' | 'bicycling' | 'transit';
     alternatives?: boolean;
-    steps?: boolean;
-    overview?: 'full' | 'simplified' | 'false';
+    avoid?: ('tolls' | 'highways' | 'ferries')[];
+    departureTime?: Date;
 }
 
 interface RouteResult {
@@ -13,68 +15,118 @@ interface RouteResult {
     duration: number;
     distanceText: string;
     durationText: string;
-    geoJSON: GeoJSON.Feature;
+    geoJSON: Feature<Geometry>;
     steps?: any[];
 }
 
 export class DirectionsService {
+    private googleApiKey: string;
+
+    constructor() {
+        // Get API key from app.json or environment
+        this.googleApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY';
+    }
+
     async getDirections(
         origin: { latitude: number; longitude: number },
         destination: { latitude: number; longitude: number },
         options: RouteOptions = {}
     ): Promise<RouteResult> {
         try {
-            const profile = options.profile || 'driving-traffic';
-            const coords = `${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
-            const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coords}`;
+            const mode = options.mode || 'driving';
+            const originStr = `${origin.latitude},${origin.longitude}`;
+            const destStr = `${destination.latitude},${destination.longitude}`;
 
             const params = new URLSearchParams({
-                access_token: MAPBOX_ACCESS_TOKEN,
-                geometries: 'geojson',
-                steps: options.steps ? 'true' : 'false',
-                overview: options.overview || 'full',
-                alternatives: options.alternatives ? 'true' : 'false'
+                origin: originStr,
+                destination: destStr,
+                mode: mode,
+                key: this.googleApiKey,
+                alternatives: options.alternatives ? 'true' : 'false',
             });
 
-            const response = await fetch(`${url}?${params.toString()}`);
+            if (options.avoid) {
+                params.append('avoid', options.avoid.join('|'));
+            }
+
+            const url = `https://maps.googleapis.com/maps/api/directions/json?${params.toString()}`;
+            const response = await fetch(url);
             const data = await response.json();
 
-            if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
-                throw new Error(data.message || 'No route found');
+            if (data.status !== 'OK' || !data.routes || data.routes.length === 0) {
+                throw new Error(data.error_message || 'No route found');
             }
 
             const route = data.routes[0];
-            const coordinates = route.geometry.coordinates.map((coord: [number, number]) => ({
-                latitude: coord[1],
-                longitude: coord[0],
-            }));
+            const leg = route.legs[0];
+
+            // Decode polyline to coordinates
+            const coordinates = this.decodePolyline(route.overview_polyline.points);
+
+            // Convert to GeoJSON
+            const geoJSON: Feature<Geometry> = {
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                    type: 'LineString',
+                    coordinates: coordinates.map(coord => [coord.longitude, coord.latitude])
+                }
+            };
 
             return {
                 coordinates,
-                distance: route.distance,
-                duration: route.duration,
-                distanceText: `${(route.distance / 1000).toFixed(1)} km`,
-                durationText: `${Math.floor(route.duration / 60)} min`,
-                geoJSON: {
-                    type: 'Feature',
-                    properties: {},
-                    geometry: route.geometry,
-                },
-                steps: route.legs?.[0]?.steps,
+                distance: leg.distance.value,
+                duration: leg.duration.value,
+                distanceText: leg.distance.text,
+                durationText: leg.duration.text,
+                geoJSON,
+                steps: leg.steps,
             };
         } catch (error: any) {
-            console.error('Directions API Error:', error);
-            let message = 'Route calculation failed';
-
-            if (error.message) {
-                if (error.message.includes('No route found')) {
-                    message = 'No route could be found between these points';
-                } else if (error.message.includes('Profile not found')) {
-                    message = 'Invalid transportation mode';
-                }
-            }
-
-            throw new Error(`${message}. Please try again.`);
+            console.error('Google Directions API Error:', error);
+            throw new Error('Route calculation failed. Please try again.');
         }
+    }
+
+    // Google uses encoded polylines, need to decode them
+    private decodePolyline(encoded: string): {latitude: number; longitude: number}[] {
+        const points: {latitude: number; longitude: number}[] = [];
+        let index = 0;
+        let lat = 0;
+        let lng = 0;
+
+        while (index < encoded.length) {
+            let b;
+            let shift = 0;
+            let result = 0;
+
+            do {
+                b = encoded.charCodeAt(index++) - 63;
+                result |= (b & 0x1f) << shift;
+                shift += 5;
+            } while (b >= 0x20);
+
+            const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+            lat += dlat;
+
+            shift = 0;
+            result = 0;
+
+            do {
+                b = encoded.charCodeAt(index++) - 63;
+                result |= (b & 0x1f) << shift;
+                shift += 5;
+            } while (b >= 0x20);
+
+            const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+            lng += dlng;
+
+            points.push({
+                latitude: lat / 1e5,
+                longitude: lng / 1e5,
+            });
+        }
+
+        return points;
     }
 }

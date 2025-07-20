@@ -3,9 +3,10 @@ import { useEffect } from 'react';
 import { Alert } from 'react-native';
 import { useSocket } from '@/hooks/useSocket';
 import {TripStatus} from "@/hooks/trip";
+import {Feature} from "geojson";
 
 interface UseDriverMovementProps {
-    routeToPickupGeoJSON: GeoJSON.Feature | null;
+    routeToPickupGeoJSON: Feature | null;
     userPickupCoords: [number, number] | null;
     currentLegIndex: number;
     driverName: string;

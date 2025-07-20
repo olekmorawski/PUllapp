@@ -1,7 +1,7 @@
 // hooks/useLocationSetup.ts
 import { useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
-import Mapbox from '@rnmapbox/maps';
+import * as Location from 'expo-location';
 import { useLocation } from '@/hooks/Location/useLocation';
 import { LocationData } from './useRideAppState';
 
@@ -41,8 +41,8 @@ export const useLocationSetup = ({
     }, [userLocation, locationError, origin, setOrigin, onLocationSelect]);
 
     // Handle location updates from map
-    const handleLocationUpdate = useCallback((mapboxLocation: Mapbox.Location) => {
-        const coords = mapboxLocation.coords;
+    const handleLocationUpdate = useCallback((location: Location.LocationObject) => {
+        const coords = location.coords;
         if (origin?.isCurrentLocation) {
             const address = `Current Location (${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)})`;
             const locationData: LocationData = {

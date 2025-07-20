@@ -1,8 +1,13 @@
-import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
+// hooks/Location/LocationService.tsx
+// Option 2: Switch to Google Places API (if you want to unify your mapping stack)
+
 import { PlaceResult, SearchOptions } from '@/components/BottomSheet/types';
 
+const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY';
+
 class PlacesService {
-    private baseUrl = 'https://api.mapbox.com/geocoding/v5/mapbox.places';
+    private placesUrl = 'https://maps.googleapis.com/maps/api/place';
+    private geocodeUrl = 'https://maps.googleapis.com/maps/api/geocode';
 
     async searchPlaces(query: string, options: SearchOptions = {}): Promise<PlaceResult[]> {
         if (!query || query.trim().length < 2) {
@@ -10,43 +15,44 @@ class PlacesService {
         }
 
         try {
+            // Use Places API Text Search
             const params = new URLSearchParams({
-                access_token: MAPBOX_ACCESS_TOKEN,
-                autocomplete: 'true',
-                limit: (options.limit || 5).toString(),
+                query: query,
+                key: GOOGLE_MAPS_API_KEY,
                 language: options.language || 'en',
             });
 
-            // Add proximity bias if user location is provided
+            // Add location bias if provided
             if (options.location) {
-                params.append('proximity', `${options.location.longitude},${options.location.latitude}`);
+                params.append('location', `${options.location.latitude},${options.location.longitude}`);
+                params.append('radius', '50000'); // 50km radius
             }
 
-            // Add types filter if provided
-            if (options.types) {
-                const mapboxTypes = this.convertToMapboxTypes(options.types);
-                if (mapboxTypes) {
-                    params.append('types', mapboxTypes);
-                }
-            }
-
-            const encodedQuery = encodeURIComponent(query);
-            const url = `${this.baseUrl}/${encodedQuery}.json?${params.toString()}`;
-
+            const url = `${this.placesUrl}/textsearch/json?${params.toString()}`;
             const response = await fetch(url);
             const data = await response.json();
 
-            if (!response.ok) {
-                throw new Error(data.message || 'Geocoding request failed');
+            if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+                throw new Error(data.error_message || 'Places search failed');
             }
 
-            if (!data.features || data.features.length === 0) {
+            if (!data.results || data.results.length === 0) {
                 return [];
             }
 
-            return data.features.map((feature: any) => this.formatPlaceResult(feature));
+            return data.results.slice(0, options.limit || 5).map((place: any) => ({
+                id: place.place_id,
+                title: place.name,
+                subtitle: this.extractSubtitle(place.formatted_address),
+                fullAddress: place.formatted_address,
+                coordinates: {
+                    latitude: place.geometry.location.lat,
+                    longitude: place.geometry.location.lng,
+                },
+                placeId: place.place_id,
+            }));
         } catch (error) {
-            console.error('Places search error:', error);
+            console.error('Google Places search error:', error);
             throw new Error(`Places API Error: ${error instanceof Error ? error.message : 'Search failed'}`);
         }
     }
@@ -54,19 +60,31 @@ class PlacesService {
     async getPlaceDetails(placeId: string): Promise<PlaceResult | null> {
         try {
             const params = new URLSearchParams({
-                access_token: MAPBOX_ACCESS_TOKEN,
-                limit: '1',
+                place_id: placeId,
+                key: GOOGLE_MAPS_API_KEY,
+                fields: 'name,formatted_address,geometry',
             });
 
-            const url = `${this.baseUrl}/${encodeURIComponent(placeId)}.json?${params.toString()}`;
+            const url = `${this.placesUrl}/details/json?${params.toString()}`;
             const response = await fetch(url);
             const data = await response.json();
 
-            if (!response.ok || !data.features || data.features.length === 0) {
+            if (data.status !== 'OK' || !data.result) {
                 return null;
             }
 
-            return this.formatPlaceResult(data.features[0]);
+            const place = data.result;
+            return {
+                id: placeId,
+                title: place.name,
+                subtitle: this.extractSubtitle(place.formatted_address),
+                fullAddress: place.formatted_address,
+                coordinates: {
+                    latitude: place.geometry.location.lat,
+                    longitude: place.geometry.location.lng,
+                },
+                placeId: placeId,
+            };
         } catch (error) {
             console.error('Place details error:', error);
             return null;
@@ -76,68 +94,32 @@ class PlacesService {
     async reverseGeocode(coordinates: { latitude: number; longitude: number }): Promise<string> {
         try {
             const params = new URLSearchParams({
-                access_token: MAPBOX_ACCESS_TOKEN,
-                limit: '1',
+                latlng: `${coordinates.latitude},${coordinates.longitude}`,
+                key: GOOGLE_MAPS_API_KEY,
             });
 
-            const url = `${this.baseUrl}/${coordinates.longitude},${coordinates.latitude}.json?${params.toString()}`;
+            const url = `${this.geocodeUrl}/json?${params.toString()}`;
             const response = await fetch(url);
             const data = await response.json();
 
-            if (!response.ok || !data.features || data.features.length === 0) {
+            if (data.status !== 'OK' || !data.results || data.results.length === 0) {
                 return `${coordinates.latitude.toFixed(6)}, ${coordinates.longitude.toFixed(6)}`;
             }
 
-            return data.features[0].place_name;
+            return data.results[0].formatted_address;
         } catch (error) {
             console.error('Reverse geocoding error:', error);
             return `${coordinates.latitude.toFixed(6)}, ${coordinates.longitude.toFixed(6)}`;
         }
     }
 
-    private formatPlaceResult(feature: any): PlaceResult {
-        const { properties, geometry, place_name, text, context = [] } = feature;
-
-        // Extract components from context
-        const components = this.parseContext(context);
-
-        // Build title and subtitle
-        const title = text || place_name.split(',')[0];
-        const subtitle = components.locality || components.place || components.region || '';
-
-        return {
-            id: feature.id || `${geometry.coordinates[0]},${geometry.coordinates[1]}`,
-            title: title,
-            subtitle: subtitle,
-            fullAddress: place_name,
-            coordinates: {
-                latitude: geometry.coordinates[1],
-                longitude: geometry.coordinates[0],
-            },
-            placeId: place_name,
-        };
-    }
-
-    private parseContext(context: any[]): Record<string, string> {
-        const components: Record<string, string> = {};
-
-        context.forEach((item: any) => {
-            const [type] = item.id.split('.');
-            components[type] = item.text;
-        });
-
-        return components;
-    }
-
-    private convertToMapboxTypes(googleTypes: string): string {
-        const typeMapping: Record<string, string[]> = {
-            'establishment': ['poi'],
-            'address': ['address'],
-            'establishment,address': ['poi', 'address'],
-        };
-
-        const types = typeMapping[googleTypes];
-        return types ? types.join(',') : 'poi,address';
+    private extractSubtitle(formattedAddress: string): string {
+        // Extract city/region from formatted address
+        const parts = formattedAddress.split(',');
+        if (parts.length > 1) {
+            return parts.slice(1, 3).join(',').trim();
+        }
+        return formattedAddress;
     }
 }
 

@@ -11,9 +11,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.olekmorawski.PullUp",
-      "config": {
-        "googleMapsApiKey": "AIzaSyAwrnA0SWKH89KLa-v2RGfEx7akD8nX48c"
-      },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show nearby rides and services.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to provide ride services even when the app is in the background."
@@ -28,7 +25,7 @@
       "package": "com.olekmorawski.PullUp",
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyAwrnA0SWKH89KLa-v2RGfEx7akD8nX48c"
+          "apiKey": "AIzaSyC_zU2hqBW-309U3UJ4T3PK4pA-Ws1g1GU"
         }
       }
     },
@@ -55,15 +52,14 @@
         }
       ],
       [
-        "@rnmapbox/maps",
+        "expo-maps",
         {
-          "RNMapboxMapsImpl": "mapbox",
-          "RNMapboxMapsAccessToken": "pk.eyJ1Ijoib2xla21vcmF3c2tpIiwiYSI6ImNtY21jaXZnYTBnaTAybHMzMWp4cnB2MmYifQ.gmAgP14PfVyDhelFkHeFsg"
+          "requestLocationPermission": true,
+          "locationPermission": "Allow $(PRODUCT_NAME) to use your location to find nearby rides."
         }
       ],
       "expo-web-browser",
-      "expo-secure-store",
-      "expo-maps"
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
