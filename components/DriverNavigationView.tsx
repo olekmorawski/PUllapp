@@ -1,26 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
-import { NavigationView, NavigationViewController } from '@googlemaps/react-native-navigation-sdk';
+import { NavigationView, NavigationViewController, CameraPerspective } from '@googlemaps/react-native-navigation-sdk';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface DriverNavigationViewProps {
-    // Current driver location
     driverLocation?: { latitude: number; longitude: number };
-
-    // Pickup location
     pickupLocation: { latitude: number; longitude: number };
     pickupAddress: string;
-
-    // Destination location
     destinationLocation: { latitude: number; longitude: number };
     destinationAddress: string;
-
-    // Rider info
     riderName: string;
     riderPhone?: string;
-
-    // Callbacks
     onArrivedAtPickup: () => void;
     onStartTrip: () => void;
     onCompleteTrip: () => void;
@@ -40,65 +31,21 @@ export const DriverNavigationView: React.FC<DriverNavigationViewProps> = ({
                                                                               onCompleteTrip,
                                                                               onCancelNavigation,
                                                                           }) => {
-    const navigationControllerRef = useRef<NavigationViewController>(null);
+    const navigationControllerRef = useRef<NavigationViewController | null>(null);
     const [navigationState, setNavigationState] = useState<'to_pickup' | 'at_pickup' | 'to_destination' | 'completed'>('to_pickup');
-    const [isNavigating, setIsNavigating] = useState(false);
-    const [currentInstruction, setCurrentInstruction] = useState<string>('');
-    const [timeToDestination, setTimeToDestination] = useState<string>('');
-    const [distanceToDestination, setDistanceToDestination] = useState<string>('');
+    const [currentInstruction, setCurrentInstruction] = useState('');
+    const [timeToDestination, setTimeToDestination] = useState('');
+    const [distanceToDestination, setDistanceToDestination] = useState('');
 
-    useEffect(() => {
-        if (navigationControllerRef.current && !isNavigating) {
-            startNavigation();
-        }
-    }, [navigationControllerRef.current]);
+    const onNavigationViewControllerCreated = (controller: NavigationViewController) => {
+        navigationControllerRef.current = controller;
 
-    const startNavigation = async () => {
-        try {
-            const controller = navigationControllerRef.current;
-            if (!controller) return;
-
-            setIsNavigating(true);
-
-            // Start navigation to pickup location
-            await controller.setDestination({
-                latitude: pickupLocation.latitude,
-                longitude: pickupLocation.longitude,
-            });
-
-            await controller.startNavigation();
-
-            // Enable turn-by-turn voice guidance
-            await controller.setAudioGuidance(true);
-
-            // Set camera to follow user location
-            await controller.setFollowingCameraMode();
-
-        } catch (error) {
-            console.error('Navigation error:', error);
-            Alert.alert('Navigation Error', 'Failed to start navigation. Please try again.');
-            setIsNavigating(false);
-        }
-    };
-
-    const navigateToDestination = async () => {
-        try {
-            const controller = navigationControllerRef.current;
-            if (!controller) return;
-
-            // Update destination to rider's destination
-            await controller.setDestination({
-                latitude: destinationLocation.latitude,
-                longitude: destinationLocation.longitude,
-            });
-
-            setNavigationState('to_destination');
-            onStartTrip();
-
-        } catch (error) {
-            console.error('Navigation error:', error);
-            Alert.alert('Navigation Error', 'Failed to update destination.');
-        }
+        // Example camera + UI setup
+        controller.setFollowingPerspective(CameraPerspective.TILTED);
+        controller.setNavigationUIEnabled(true);
+        controller.setTripProgressBarEnabled(true);
+        controller.setSpeedometerEnabled(true);
+        controller.setRecenterButtonEnabled(true);
     };
 
     const handleArrivalAtPickup = () => {
@@ -111,14 +58,17 @@ export const DriverNavigationView: React.FC<DriverNavigationViewProps> = ({
             [
                 {
                     text: 'Start Trip',
-                    onPress: navigateToDestination,
+                    onPress: () => {
+                        setNavigationState('to_destination');
+                        onStartTrip();
+                    },
                 },
                 {
                     text: 'Call Rider',
                     onPress: () => {
                         if (riderPhone) {
-                            // Implement phone call functionality
                             console.log('Calling rider:', riderPhone);
+                            // add call implementation if desired
                         }
                     },
                 },
@@ -128,25 +78,19 @@ export const DriverNavigationView: React.FC<DriverNavigationViewProps> = ({
 
     const handleArrivalAtDestination = () => {
         setNavigationState('completed');
-        Alert.alert(
-            'Trip Completed',
-            'You have arrived at the destination.',
-            [
-                {
-                    text: 'Complete Trip',
-                    onPress: onCompleteTrip,
-                }
-            ]
-        );
+        Alert.alert('Trip Completed', 'You have arrived at the destination.', [
+            {
+                text: 'Complete Trip',
+                onPress: onCompleteTrip,
+            },
+        ]);
     };
 
     const handleNavigationUpdate = (event: any) => {
-        // Update current instruction
-        if (event.currentStep) {
+        if (event.currentStep?.instruction) {
             setCurrentInstruction(event.currentStep.instruction);
         }
 
-        // Update time and distance
         if (event.remainingTime) {
             const minutes = Math.round(event.remainingTime / 60);
             setTimeToDestination(`${minutes} min`);
@@ -157,7 +101,6 @@ export const DriverNavigationView: React.FC<DriverNavigationViewProps> = ({
             setDistanceToDestination(`${km} km`);
         }
 
-        // Check for arrival
         if (event.hasArrived) {
             if (navigationState === 'to_pickup') {
                 handleArrivalAtPickup();
@@ -167,99 +110,84 @@ export const DriverNavigationView: React.FC<DriverNavigationViewProps> = ({
         }
     };
 
-    const renderNavigationInfo = () => {
-        return (
-            <View style={styles.infoContainer}>
-                {/* Current Navigation Instruction */}
-                <View style={styles.instructionContainer}>
-                    <Ionicons name="navigate" size={24} color="#007AFF" />
-                    <Text style={styles.instructionText} numberOfLines={2}>
-                        {currentInstruction || 'Starting navigation...'}
-                    </Text>
-                </View>
+    const renderNavigationInfo = () => (
+        <View style={styles.infoContainer}>
+            <View style={styles.instructionContainer}>
+                <Ionicons name="navigate" size={24} color="#007AFF" />
+                <Text style={styles.instructionText} numberOfLines={2}>
+                    {currentInstruction || 'Starting navigation...'}
+                </Text>
+            </View>
 
-                {/* Time and Distance */}
-                <View style={styles.metricsContainer}>
-                    <View style={styles.metric}>
-                        <Ionicons name="time-outline" size={20} color="#666" />
-                        <Text style={styles.metricText}>{timeToDestination || '--'}</Text>
-                    </View>
-                    <View style={styles.metric}>
-                        <Ionicons name="location-outline" size={20} color="#666" />
-                        <Text style={styles.metricText}>{distanceToDestination || '--'}</Text>
-                    </View>
+            <View style={styles.metricsContainer}>
+                <View style={styles.metric}>
+                    <Ionicons name="time-outline" size={20} color="#666" />
+                    <Text style={styles.metricText}>{timeToDestination || '--'}</Text>
                 </View>
-
-                {/* Destination Info */}
-                <View style={styles.destinationInfo}>
-                    <Text style={styles.destinationLabel}>
-                        {navigationState === 'to_pickup' ? 'Pickup' : 'Destination'}:
-                    </Text>
-                    <Text style={styles.destinationAddress} numberOfLines={2}>
-                        {navigationState === 'to_pickup' ? pickupAddress : destinationAddress}
-                    </Text>
-                </View>
-
-                {/* Rider Info */}
-                <View style={styles.riderInfo}>
-                    <Ionicons name="person-circle-outline" size={24} color="#666" />
-                    <Text style={styles.riderName}>{riderName}</Text>
-                    {riderPhone && (
-                        <TouchableOpacity style={styles.callButton}>
-                            <Ionicons name="call" size={20} color="#007AFF" />
-                        </TouchableOpacity>
-                    )}
+                <View style={styles.metric}>
+                    <Ionicons name="location-outline" size={20} color="#666" />
+                    <Text style={styles.metricText}>{distanceToDestination || '--'}</Text>
                 </View>
             </View>
-        );
-    };
+
+            <View style={styles.destinationInfo}>
+                <Text style={styles.destinationLabel}>
+                    {navigationState === 'to_pickup' ? 'Pickup' : 'Destination'}:
+                </Text>
+                <Text style={styles.destinationAddress} numberOfLines={2}>
+                    {navigationState === 'to_pickup' ? pickupAddress : destinationAddress}
+                </Text>
+            </View>
+
+            <View style={styles.riderInfo}>
+                <Ionicons name="person-circle-outline" size={24} color="#666" />
+                <Text style={styles.riderName}>{riderName}</Text>
+                {riderPhone && (
+                    <TouchableOpacity style={styles.callButton}>
+                        <Ionicons name="call" size={20} color="#007AFF" />
+                    </TouchableOpacity>
+                )}
+            </View>
+        </View>
+    );
 
     return (
-        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-            {/* Navigation Map View */}
+        <SafeAreaView style={styles.container}>
             <View style={styles.mapContainer}>
                 <NavigationView
-                    ref={navigationControllerRef}
                     style={styles.map}
-                    onNavigationReady={() => console.log('Navigation ready')}
-                    onNavigationStarted={() => console.log('Navigation started')}
-                    onRouteChanged={(event) => console.log('Route changed', event)}
-                    onNavigationUpdate={handleNavigationUpdate}
-                    onArrival={handleNavigationUpdate}
+                    onMapViewControllerCreated={(controller) => {
+                        console.log('Map controller ready');
+                    }}
+                    onNavigationViewControllerCreated={onNavigationViewControllerCreated}
+                    navigationViewCallbacks={{ onRecenterButtonClick: () => console.log('Recenter clicked') }}
+                    mapViewCallbacks={{}}
                 />
 
-                {/* Cancel Navigation Button */}
                 <TouchableOpacity
                     style={styles.cancelButton}
-                    onPress={() => {
-                        Alert.alert(
-                            'Cancel Navigation',
-                            'Are you sure you want to cancel this trip?',
-                            [
-                                { text: 'No', style: 'cancel' },
-                                { text: 'Yes', onPress: onCancelNavigation, style: 'destructive' }
-                            ]
-                        );
-                    }}
+                    onPress={() =>
+                        Alert.alert('Cancel Navigation', 'Are you sure you want to cancel this trip?', [
+                            { text: 'No', style: 'cancel' },
+                            { text: 'Yes', onPress: onCancelNavigation, style: 'destructive' },
+                        ])
+                    }
                 >
                     <Ionicons name="close" size={24} color="#FF3B30" />
                 </TouchableOpacity>
             </View>
 
-            {/* Navigation Info Panel */}
             {renderNavigationInfo()}
 
-            {/* Action Button based on state */}
             <View style={styles.actionContainer}>
                 {navigationState === 'at_pickup' && (
-                    <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={navigateToDestination}
-                    >
+                    <TouchableOpacity style={styles.actionButton} onPress={() => {
+                        setNavigationState('to_destination');
+                        onStartTrip();
+                    }}>
                         <Text style={styles.actionButtonText}>Start Trip to Destination</Text>
                     </TouchableOpacity>
                 )}
-
                 {navigationState === 'completed' && (
                     <TouchableOpacity
                         style={[styles.actionButton, styles.completeButton]}
