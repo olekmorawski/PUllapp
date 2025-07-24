@@ -155,7 +155,7 @@ const RideCard: React.FC<RideCardProps> = ({
                     }`}
                 >
                     <Text className="text-white font-medium">
-                        {isAccepting ? 'Accepting...' : 'Accept Ride'}
+                        {isAccepting ? 'Starting Navigation...' : 'Accept & Navigate'}
                     </Text>
                 </TouchableOpacity>
             </View>

@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { useGetAvailableRides } from '@/hooks/ride/useGetAvailableRides';
 import { useAcceptRide } from '@/hooks/ride/useAcceptRide';
 import { LocationData } from './useRideAppState';
+import {useDriverNavigation} from "@/hooks/useDriverNavigation";
 
 interface UseRideManagementProps {
     isDriverViewActive: boolean;
@@ -24,6 +25,8 @@ export const useRideManagement = ({
                                       setAcceptingRideId,
                                   }: UseRideManagementProps) => {
     const router = useRouter();
+
+    const { startNavigationForRide } = useDriverNavigation();
 
     // Driver-specific hooks
     const {
@@ -45,34 +48,19 @@ export const useRideManagement = ({
                 const acceptedRide = data.ride;
                 setAcceptingRideId(null);
 
-                Alert.alert(
-                    'Ride Accepted!',
-                    `You have successfully accepted the ride from ${acceptedRide.originAddress} to ${acceptedRide.destinationAddress}.`,
-                    [
-                        {
-                            text: 'View Details',
-                            onPress: () => {
-                                console.log('Navigate to ride details:', acceptedRide);
-                            }
-                        },
-                        { text: 'OK', style: 'default' }
-                    ]
-                );
+                // Start navigation immediately after accepting
+                startNavigationForRide(acceptedRide);
             },
             onError: (error: any) => {
                 setAcceptingRideId(null);
                 console.error('Error accepting ride:', error);
                 Alert.alert(
                     'Failed to Accept Ride',
-                    error.message || 'Unable to accept the ride. Please try again.',
-                    [
-                        { text: 'Retry', onPress: () => handleAcceptRide(rideId) },
-                        { text: 'Cancel', style: 'cancel' }
-                    ]
+                    error.message || 'Unable to accept the ride. Please try again.'
                 );
             },
         });
-    }, [acceptRide, setAcceptingRideId]);
+    }, [acceptRide, setAcceptingRideId, startNavigationForRide]);
 
     const handleRejectRide = useCallback(async (rideId: string) => {
         try {
