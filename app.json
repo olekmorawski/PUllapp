@@ -16,7 +16,9 @@
       },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show nearby rides and services.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to provide ride services even when the app is in the background."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to provide ride services even when the app is in the background.",
+        "MBXAccessToken": "pk.eyJ1Ijoib2xla21vcmF3c2tpIiwiYSI6ImNtZGkwcmczYTAwZmoyanM1eGdzZWh4NGsifQ.xHnSlxwo27wFFs2o6-YsTg",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -30,7 +32,11 @@
         "googleMaps": {
           "apiKey": "AIzaSyAwrnA0SWKH89KLa-v2RGfEx7akD8nX48c"
         }
-      }
+      },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -83,6 +89,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "155fb4ba-a3b1-4bfa-89ae-a8bc356ae8bc"
+      }
     }
   }
 }
