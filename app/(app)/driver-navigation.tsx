@@ -120,7 +120,30 @@ export default function DriverNavigationScreen(): React.JSX.Element | null {
         return null;
     }
 
-    // Use OSRM navigation hook
+    const {
+        navigationPhase,
+        isNavigationActive,
+        currentDestination,
+        driverLocation,
+        handleArrivedAtPickup,
+        handleArrivedAtDestination,
+        isAtPickupPhase,
+    } = useDriverNavigation({
+        rideData: {
+            ...rideData,
+            pickupLat: rideData.pickup.latitude,
+            pickupLng: rideData.pickup.longitude,
+            destLat: rideData.destination.latitude,
+            destLng: rideData.destination.longitude,
+        },
+        onNavigationComplete: () => router.replace('/(app)'),
+    });
+
+    const navigationOrigin = driverLocation ? {
+        latitude: driverLocation.coords.latitude,
+        longitude: driverLocation.coords.longitude
+    } : rideData.pickup;
+
     const {
         isNavigating,
         isLoading,
@@ -141,52 +164,34 @@ export default function DriverNavigationScreen(): React.JSX.Element | null {
         formatDuration,
         getManeuverIcon,
     } = useOSRMNavigation({
-        origin: rideData.pickup,
-        destination: rideData.destination,
-        onDestinationReached: ({ location }) => {
-            console.log('🎯 Destination reached:', location);
-            Alert.alert(
-                'Trip Completed! 🎉',
-                `Congratulations! You've successfully completed the trip.\n\nEarnings: ${rideData.estimatedPrice}\n\nThank you for providing excellent service!`,
-                [
-                    {
-                        text: 'Complete Trip',
-                        onPress: () => router.replace('/(app)')
-                    }
-                ]
-            );
+        origin: navigationOrigin,
+        destination: currentDestination,
+        onDestinationReached: () => {
+            if (isAtPickupPhase) {
+                handleArrivedAtPickup();
+            } else {
+                handleArrivedAtDestination();
+            }
         },
         onNavigationError: (error: Error) => {
-            console.error('❌ Navigation error:', error);
-            // Don't show alert for network errors if we have retry capability
-            if (retryCount < 3) {
-                console.log('Will retry navigation automatically...');
-            } else {
+            if (retryCount >= 2) {
                 Alert.alert(
                     'Navigation Error',
-                    `${error.message}\n\nPlease check your internet connection and try again.`,
+                    `${error.message}. Please check your connection.`,
                     [
                         { text: 'Go Back', onPress: () => router.back() },
-                        { text: 'Retry', onPress: () => retryNavigation() }
+                        { text: 'Retry', onPress: retryNavigation }
                     ]
                 );
             }
         },
-        onNewInstruction: (instruction: NavigationInstruction) => {
-            console.log('🗣️ New navigation instruction:', instruction.voiceInstruction);
-            // Here you can integrate with expo-speech for voice guidance
-            // Speech.speak(instruction.voiceInstruction);
-        }
     });
 
-    // Start navigation when component mounts
     useEffect(() => {
-        if (!hasStartedNavigation.current && rideData.pickup && rideData.destination) {
-            hasStartedNavigation.current = true;
-            console.log('🚀 Starting navigation...');
+        if (isNavigationActive && !isNavigating && !isLoading && !error) {
             startNavigation();
         }
-    }, [startNavigation, rideData.pickup, rideData.destination]);
+    }, [isNavigationActive, isNavigating, isLoading, error, startNavigation]);
 
     const handleStopNavigation = (): void => {
         Alert.alert(
@@ -208,15 +213,26 @@ export default function DriverNavigationScreen(): React.JSX.Element | null {
 
     const handleRecenterCamera = (): void => {
         const cameraConfig = getMapboxCameraConfig();
-        if (cameraRef.current && cameraConfig) {
-            cameraRef.current.setCamera({
-                centerCoordinate: cameraConfig.centerCoordinate,
-                zoomLevel: cameraConfig.zoomLevel,
-                pitch: cameraConfig.pitch,
-                heading: cameraConfig.heading,
-                animationMode: 'easeTo',
-                animationDuration: 500,
-            });
+        if (cameraRef.current) {
+            if (cameraConfig) {
+                cameraRef.current.setCamera({
+                    centerCoordinate: cameraConfig.centerCoordinate,
+                    zoomLevel: cameraConfig.zoomLevel,
+                    pitch: cameraConfig.pitch,
+                    heading: cameraConfig.heading,
+                    animationMode: 'easeTo',
+                    animationDuration: 500,
+                });
+            } else if (driverLocation) {
+                cameraRef.current.setCamera({
+                    centerCoordinate: [driverLocation.coords.longitude, driverLocation.coords.latitude],
+                    zoomLevel: 18,
+                    pitch: 60,
+                    heading: driverLocation.coords.heading || 0,
+                    animationMode: 'easeTo',
+                    animationDuration: 500,
+                });
+            }
         }
     };
 
@@ -274,6 +290,7 @@ export default function DriverNavigationScreen(): React.JSX.Element | null {
             {/* Mapbox Navigation Map */}
             <MapboxNavigationMap
                 mapRef={mapRef}
+                cameraRef={cameraRef}
                 initialRegion={{
                     latitude: rideData.pickup.latitude,
                     longitude: rideData.pickup.longitude,
@@ -283,7 +300,7 @@ export default function DriverNavigationScreen(): React.JSX.Element | null {
                 routeGeoJSON={getRouteGeoJSON()}
                 currentPosition={currentPosition}
                 currentHeading={currentHeading}
-                destination={rideData.destination}
+                destination={currentDestination}
                 cameraConfig={getMapboxCameraConfig()}
                 showUserLocation={true}
                 style={styles.map}
@@ -400,7 +417,7 @@ export default function DriverNavigationScreen(): React.JSX.Element | null {
                 <View style={styles.tripInfo}>
                     <View style={styles.tripInfoContent}>
                         <Text style={styles.tripDestination} numberOfLines={1}>
-                            To: {rideData.destAddress}
+                            {navigationPhase === 'TO_PICKUP' ? 'To: ' + rideData.pickupAddress : 'To: ' + rideData.destAddress}
                         </Text>
                         <Text style={styles.tripPassenger} numberOfLines={1}>
                             Passenger: {rideData.passengerName}
