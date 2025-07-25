@@ -32,7 +32,7 @@ export const useDriverMovement = ({
     const lastRouteIdRef = useRef<string>('');
 
     // Create a stable route identifier to prevent unnecessary re-initialization
-    const createRouteId = useCallback((routeGeoJSON: Feature | null, pickupCoords: [number, number] | null): string => {
+    const createRouteId = useCallback((routeGeoJSON: GeoJSON.Feature | null, pickupCoords: [number, number] | null): string => {
         if (!routeGeoJSON || !pickupCoords) return '';
 
         const geometry = routeGeoJSON.geometry;

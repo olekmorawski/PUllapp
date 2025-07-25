@@ -7,7 +7,6 @@ import * as Location from 'expo-location';
 
 interface MapboxNavigationProps {
     mapRef?: React.Ref<Mapbox.MapView>;
-    cameraRef?: React.Ref<Mapbox.Camera>;
     initialRegion?: {
         latitude: number;
         longitude: number;
@@ -33,7 +32,6 @@ interface MapboxNavigationProps {
 
 export const MapboxNavigationMap: React.FC<MapboxNavigationProps> = ({
                                                                          mapRef,
-                                                                         cameraRef,
                                                                          initialRegion,
                                                                          routeGeoJSON,
                                                                          currentPosition,
@@ -45,6 +43,7 @@ export const MapboxNavigationMap: React.FC<MapboxNavigationProps> = ({
                                                                          style,
                                                                          children
                                                                      }) => {
+    const cameraRef = useRef<Mapbox.Camera>(null);
     const [isMapReady, setIsMapReady] = useState(false);
 
     // Update camera when config changes
@@ -91,11 +90,7 @@ export const MapboxNavigationMap: React.FC<MapboxNavigationProps> = ({
                 scrollEnabled={true}
                 zoomEnabled={true}
             >
-                <Mapbox.Camera
-                    ref={cameraRef as React.Ref<Mapbox.Camera>}
-                    followUserLocation
-                    followUserMode="course"
-                />
+                <Mapbox.Camera ref={cameraRef} />
 
                 {/* User location */}
                 {showUserLocation && (

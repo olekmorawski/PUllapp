@@ -7,7 +7,6 @@ import {
     NavigationProgress,
     NavigationInstruction
 } from '@/services/OSRMNavigationService';
-import {Feature} from "geojson";
 import * as Location from 'expo-location';
 
 interface UseOSRMNavigationProps {
@@ -46,7 +45,7 @@ export interface UseOSRMNavigationReturn {
 
     // Utilities for Mapbox
     getMapboxCameraConfig: () => MapboxCameraConfig | null;
-    getRouteGeoJSON: () => Feature | null;
+    getRouteGeoJSON: () => GeoJSON.Feature | null;
     formatDistance: (meters: number) => string;
     formatDuration: (seconds: number) => string;
     getManeuverIcon: (type: string, modifier?: string) => string;
@@ -215,17 +214,16 @@ export const useOSRMNavigation = ({
 
     // Mapbox-specific camera configuration
     const getMapboxCameraConfig = useCallback((): MapboxCameraConfig | null => {
-        const position = currentPosition || (origin ? { latitude: origin.latitude, longitude: origin.longitude } : null);
-        if (!position) return null;
+        if (!currentPosition) return null;
 
         return {
-            centerCoordinate: [position.longitude, position.latitude],
+            centerCoordinate: [currentPosition.longitude, currentPosition.latitude],
             zoomLevel: 18, // Close zoom for navigation
             pitch: 60, // 3D perspective
-            heading: 0,
+            heading: currentHeading, // Rotate based on driver direction
             animationDuration: 1000,
         };
-    }, [currentPosition, origin]);
+    }, [currentPosition, currentHeading]);
 
     // Convert route to GeoJSON for Mapbox
     const getRouteGeoJSON = useCallback((): GeoJSON.Feature | null => {
