@@ -214,16 +214,17 @@ export const useOSRMNavigation = ({
 
     // Mapbox-specific camera configuration
     const getMapboxCameraConfig = useCallback((): MapboxCameraConfig | null => {
-        if (!currentPosition) return null;
+        const position = currentPosition || (origin ? { latitude: origin.latitude, longitude: origin.longitude } : null);
+        if (!position) return null;
 
         return {
-            centerCoordinate: [currentPosition.longitude, currentPosition.latitude],
+            centerCoordinate: [position.longitude, position.latitude],
             zoomLevel: 18, // Close zoom for navigation
             pitch: 60, // 3D perspective
             heading: currentHeading, // Rotate based on driver direction
             animationDuration: 1000,
         };
-    }, [currentPosition, currentHeading]);
+    }, [currentPosition, currentHeading, origin]);
 
     // Convert route to GeoJSON for Mapbox
     const getRouteGeoJSON = useCallback((): GeoJSON.Feature | null => {

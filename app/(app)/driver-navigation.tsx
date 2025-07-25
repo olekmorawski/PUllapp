@@ -213,15 +213,26 @@ export default function DriverNavigationScreen(): React.JSX.Element | null {
 
     const handleRecenterCamera = (): void => {
         const cameraConfig = getMapboxCameraConfig();
-        if (cameraRef.current && cameraConfig) {
-            cameraRef.current.setCamera({
-                centerCoordinate: cameraConfig.centerCoordinate,
-                zoomLevel: cameraConfig.zoomLevel,
-                pitch: cameraConfig.pitch,
-                heading: cameraConfig.heading,
-                animationMode: 'easeTo',
-                animationDuration: 500,
-            });
+        if (cameraRef.current) {
+            if (cameraConfig) {
+                cameraRef.current.setCamera({
+                    centerCoordinate: cameraConfig.centerCoordinate,
+                    zoomLevel: cameraConfig.zoomLevel,
+                    pitch: cameraConfig.pitch,
+                    heading: cameraConfig.heading,
+                    animationMode: 'easeTo',
+                    animationDuration: 500,
+                });
+            } else if (driverLocation) {
+                cameraRef.current.setCamera({
+                    centerCoordinate: [driverLocation.coords.longitude, driverLocation.coords.latitude],
+                    zoomLevel: 18,
+                    pitch: 60,
+                    heading: driverLocation.coords.heading || 0,
+                    animationMode: 'easeTo',
+                    animationDuration: 500,
+                });
+            }
         }
     };
 
