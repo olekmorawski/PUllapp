@@ -1,29 +1,59 @@
-// app/(app)/driver-navigation.tsx
-import React from 'react';
-import { View, Text, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
+// app/(app)/driver-navigation.tsx - Fixed infinite loop and improved error handling
+import React, { useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, Alert, SafeAreaView, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useDriverNavigation, RideNavigationData } from '@/hooks/useDriverNavigation';
+import Mapbox from '@rnmapbox/maps';
+import { MapboxNavigationMap } from '@/components/DriverNavigation';
+import { useOSRMNavigation } from '@/hooks/useOSRMNavigation';
+import { NavigationCoordinates, NavigationInstruction } from '@/services/OSRMNavigationService';
 
-// Try to import MapboxNavigationView with error handling
-let MapboxNavigationView: any = null;
-try {
-    const MapboxNavigation = require('@complexify/expo-mapbox-navigation');
-    MapboxNavigationView = MapboxNavigation.MapboxNavigationView;
-    console.log('✅ MapboxNavigationView imported successfully');
-} catch (error) {
-    console.error('❌ Failed to import MapboxNavigationView:', error);
+// Fixed interface with index signature for dynamic access
+interface RideParams {
+    rideId: string;
+    pickupLat: string;
+    pickupLng: string;
+    pickupAddress: string;
+    destLat: string;
+    destLng: string;
+    destAddress: string;
+    passengerName: string;
+    estimatedPrice: string;
+    // Add index signature to allow dynamic string access
+    [key: string]: string | undefined;
 }
 
-export default function DriverNavigationScreen() {
+interface ParsedRideData {
+    id: string;
+    pickup: NavigationCoordinates;
+    destination: NavigationCoordinates;
+    pickupAddress: string;
+    destAddress: string;
+    passengerName: string;
+    estimatedPrice: string;
+}
+
+export default function DriverNavigationScreen(): React.JSX.Element | null {
     const router = useRouter();
-    const params = useLocalSearchParams();
+    const rawParams = useLocalSearchParams();
+    const mapRef = useRef<Mapbox.MapView>(null);
+    const cameraRef = useRef<Mapbox.Camera>(null);
+    const hasStartedNavigation = useRef<boolean>(false);
+
+    // Type assertion to our expected params structure
+    const params = rawParams as unknown as RideParams;
 
     console.log('🚗 Driver Navigation Screen loaded with params:', params);
 
-    // Validate required params
-    if (!params.rideId || !params.pickupLat || !params.pickupLng || !params.destLat || !params.destLng) {
-        console.error('❌ Missing required navigation params:', params);
+    // Validate required params with proper typing
+    const requiredParams: (keyof RideParams)[] = ['rideId', 'pickupLat', 'pickupLng', 'destLat', 'destLng'];
+    const missingParams = requiredParams.filter(param => {
+        const value = params[param];
+        return !value || (typeof value === 'string' && value.trim() === '');
+    });
+
+    if (missingParams.length > 0) {
+        console.error('❌ Missing required navigation params:', missingParams);
         Alert.alert(
             'Navigation Error',
             'Missing ride information. Returning to driver dashboard.',
@@ -32,307 +62,636 @@ export default function DriverNavigationScreen() {
         return null;
     }
 
-    // Extract ride data from params
-    const rideData: RideNavigationData = {
-        id: params.rideId as string,
-        pickupLat: parseFloat(params.pickupLat as string),
-        pickupLng: parseFloat(params.pickupLng as string),
-        pickupAddress: params.pickupAddress as string,
-        destLat: parseFloat(params.destLat as string),
-        destLng: parseFloat(params.destLng as string),
-        destAddress: params.destAddress as string,
-        passengerName: params.passengerName as string,
-        estimatedPrice: params.estimatedPrice as string,
+    // Parse and validate coordinates with better error handling
+    const parseCoordinate = (value: string | string[] | undefined, name: string): number => {
+        if (!value) {
+            throw new Error(`Missing ${name}`);
+        }
+
+        const stringValue = Array.isArray(value) ? value[0] : value;
+
+        if (!stringValue || stringValue.trim() === '') {
+            throw new Error(`Empty ${name}`);
+        }
+
+        const parsed = parseFloat(stringValue);
+        if (isNaN(parsed)) {
+            throw new Error(`Invalid ${name}: ${stringValue}`);
+        }
+        return parsed;
     };
 
-    // Early return if MapboxNavigationView is not available
-    if (!MapboxNavigationView) {
-        return (
-            <SafeAreaView className="flex-1 bg-black">
-                <Stack.Screen options={{ headerShown: false }} />
-                <View className="flex-1 justify-center items-center">
-                    <View className="bg-white rounded-2xl p-6 mx-4 items-center">
-                        <Ionicons name="warning-outline" size={48} color="#F59E0B" />
-                        <Text className="text-lg font-semibold text-gray-800 mb-2 mt-4">
-                            Navigation Not Available
-                        </Text>
-                        <Text className="text-gray-600 text-center mb-4">
-                            The Mapbox Navigation component failed to load. Please check your installation.
-                        </Text>
-                        <TouchableOpacity
-                            onPress={() => router.back()}
-                            className="bg-blue-500 rounded-lg px-6 py-3"
-                        >
-                            <Text className="text-white font-medium">Go Back</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </SafeAreaView>
+    const isValidCoordinate = (lat: number, lng: number): boolean => {
+        return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+    };
+
+    let rideData: ParsedRideData;
+
+    try {
+        const pickupLat = parseCoordinate(params.pickupLat, 'pickup latitude');
+        const pickupLng = parseCoordinate(params.pickupLng, 'pickup longitude');
+        const destLat = parseCoordinate(params.destLat, 'destination latitude');
+        const destLng = parseCoordinate(params.destLng, 'destination longitude');
+
+        if (!isValidCoordinate(pickupLat, pickupLng) || !isValidCoordinate(destLat, destLng)) {
+            throw new Error('Coordinates out of valid range');
+        }
+
+        const getStringParam = (value: string | string[] | undefined, fallback: string): string => {
+            if (!value) return fallback;
+            return Array.isArray(value) ? (value[0] || fallback) : value;
+        };
+
+        rideData = {
+            id: getStringParam(params.rideId, 'unknown'),
+            pickup: { latitude: pickupLat, longitude: pickupLng },
+            destination: { latitude: destLat, longitude: destLng },
+            pickupAddress: getStringParam(params.pickupAddress, 'Pickup Location'),
+            destAddress: getStringParam(params.destAddress, 'Destination'),
+            passengerName: getStringParam(params.passengerName, 'Passenger'),
+            estimatedPrice: getStringParam(params.estimatedPrice, '$0.00'),
+        };
+    } catch (error) {
+        Alert.alert(
+            'Invalid Coordinates',
+            `The ride coordinates are invalid: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            [{ text: 'OK', onPress: () => router.back() }]
         );
+        return null;
     }
 
-    console.log('📍 Ride data parsed:', rideData);
-
+    // Use OSRM navigation hook
     const {
-        navigationPhase,
-        isNavigationActive,
-        currentDestination,
-        driverLocation,
-        estimatedTimeRemaining,
-        distanceRemaining,
-        handleArrivedAtPickup,
-        handleArrivedAtDestination,
-        handleNavigationError,
-        handleRouteProgressChange,
-        getPhaseTitle,
-        getPhaseInstruction,
-        formatTimeRemaining,
-        formatDistanceRemaining,
-        isAtPickupPhase,
-        isAtDestinationPhase,
-    } = useDriverNavigation({
-        rideData,
-        onNavigationComplete: () => {
-            // Navigate back to driver dashboard
-            router.replace('/(app)');
-        },
-        onNavigationError: (error) => {
-            console.error('🚨 Navigation error occurred:', error);
+        isNavigating,
+        isLoading,
+        route,
+        currentPosition,
+        currentHeading,
+        progress,
+        currentInstruction,
+        nextInstruction,
+        error,
+        retryCount,
+        startNavigation,
+        stopNavigation,
+        retryNavigation,
+        getMapboxCameraConfig,
+        getRouteGeoJSON,
+        formatDistance,
+        formatDuration,
+        getManeuverIcon,
+    } = useOSRMNavigation({
+        origin: rideData.pickup,
+        destination: rideData.destination,
+        onDestinationReached: ({ location }) => {
+            console.log('🎯 Destination reached:', location);
             Alert.alert(
-                'Navigation Error',
-                'There was an issue with navigation. Please try again.',
+                'Trip Completed! 🎉',
+                `Congratulations! You've successfully completed the trip.\n\nEarnings: ${rideData.estimatedPrice}\n\nThank you for providing excellent service!`,
                 [
-                    { text: 'Retry', onPress: () => {
-                            console.log('🔄 Retrying navigation...');
-                            // The hook will automatically restart navigation
-                        }},
-                    { text: 'Cancel', onPress: () => router.back() }
+                    {
+                        text: 'Complete Trip',
+                        onPress: () => router.replace('/(app)')
+                    }
                 ]
             );
+        },
+        onNavigationError: (error: Error) => {
+            console.error('❌ Navigation error:', error);
+            // Don't show alert for network errors if we have retry capability
+            if (retryCount < 3) {
+                console.log('Will retry navigation automatically...');
+            } else {
+                Alert.alert(
+                    'Navigation Error',
+                    `${error.message}\n\nPlease check your internet connection and try again.`,
+                    [
+                        { text: 'Go Back', onPress: () => router.back() },
+                        { text: 'Retry', onPress: () => retryNavigation() }
+                    ]
+                );
+            }
+        },
+        onNewInstruction: (instruction: NavigationInstruction) => {
+            console.log('🗣️ New navigation instruction:', instruction.voiceInstruction);
+            // Here you can integrate with expo-speech for voice guidance
+            // Speech.speak(instruction.voiceInstruction);
         }
     });
 
-    // Early return with loading state if driver location is not available
-    if (!driverLocation) {
-        return (
-            <SafeAreaView className="flex-1 bg-black">
-                <Stack.Screen options={{ headerShown: false }} />
-                <View className="flex-1 justify-center items-center">
-                    <View className="bg-white rounded-2xl p-6 mx-4 items-center">
-                        <Text className="text-lg font-semibold text-gray-800 mb-2">
-                            Getting your location...
-                        </Text>
-                        <Text className="text-gray-600 text-center">
-                            Please ensure location permissions are enabled for navigation to work.
-                        </Text>
-                        <TouchableOpacity
-                            onPress={() => router.back()}
-                            className="mt-4 bg-gray-500 rounded-lg px-4 py-2"
-                        >
-                            <Text className="text-white font-medium">Go Back</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </SafeAreaView>
-        );
-    }
+    // Start navigation when component mounts
+    useEffect(() => {
+        if (!hasStartedNavigation.current && rideData.pickup && rideData.destination) {
+            hasStartedNavigation.current = true;
+            console.log('🚀 Starting navigation...');
+            startNavigation();
+        }
+    }, [startNavigation, rideData.pickup, rideData.destination]);
 
-    // Validate coordinates before rendering navigation
-    const isValidCoordinate = (lat: number, lng: number) => {
-        return !isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
-    };
-
-    const driverLat = driverLocation?.coords.latitude || 0;
-    const driverLng = driverLocation?.coords.longitude || 0;
-    const destLat = currentDestination.latitude;
-    const destLng = currentDestination.longitude;
-
-    const hasValidCoordinates = isValidCoordinate(driverLat, driverLng) && isValidCoordinate(destLat, destLng);
-
-    console.log('🗺️ Coordinate validation:', {
-        driver: { lat: driverLat, lng: driverLng, valid: isValidCoordinate(driverLat, driverLng) },
-        destination: { lat: destLat, lng: destLng, valid: isValidCoordinate(destLat, destLng) },
-        overall: hasValidCoordinates
-    });
-
-    const handleBackPress = () => {
+    const handleStopNavigation = (): void => {
         Alert.alert(
             'Cancel Navigation',
-            'Are you sure you want to cancel this ride navigation?',
+            'Are you sure you want to cancel this trip? This may affect your driver rating.',
             [
-                { text: 'No', style: 'cancel' },
+                { text: 'Continue Trip', style: 'cancel' },
                 {
-                    text: 'Yes, Cancel',
+                    text: 'Cancel Trip',
                     style: 'destructive',
-                    onPress: () => router.back()
+                    onPress: () => {
+                        stopNavigation();
+                        router.replace('/(app)');
+                    }
                 }
             ]
         );
     };
 
+    const handleRecenterCamera = (): void => {
+        const cameraConfig = getMapboxCameraConfig();
+        if (cameraRef.current && cameraConfig) {
+            cameraRef.current.setCamera({
+                centerCoordinate: cameraConfig.centerCoordinate,
+                zoomLevel: cameraConfig.zoomLevel,
+                pitch: cameraConfig.pitch,
+                heading: cameraConfig.heading,
+                animationMode: 'easeTo',
+                animationDuration: 500,
+            });
+        }
+    };
+
+    const handleCallPassenger = (): void => {
+        Alert.alert(
+            'Call Passenger',
+            `Do you want to call ${rideData.passengerName}?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Call', onPress: () => console.log('Calling passenger...') }
+            ]
+        );
+    };
+
+    const handleRetry = (): void => {
+        hasStartedNavigation.current = false;
+        retryNavigation();
+    };
+
+    // Error state with retry option
+    if (error && retryCount >= 3) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={styles.errorContainer}>
+                    <Ionicons name="warning-outline" size={48} color="#F59E0B" />
+                    <Text style={styles.errorTitle}>Navigation Error</Text>
+                    <Text style={styles.errorMessage}>
+                        {error.message}
+                        {'\n\n'}Please check your internet connection and try again.
+                    </Text>
+                    <View style={styles.errorButtonContainer}>
+                        <TouchableOpacity
+                            onPress={() => router.back()}
+                            style={[styles.errorButton, styles.secondaryButton]}
+                        >
+                            <Text style={styles.secondaryButtonText}>Go Back</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={handleRetry}
+                            style={styles.errorButton}
+                        >
+                            <Text style={styles.errorButtonText}>Retry</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     return (
-        <SafeAreaView className="flex-1 bg-black">
-            <Stack.Screen
-                options={{
-                    headerShown: false,
+        <SafeAreaView style={styles.container}>
+            <Stack.Screen options={{ headerShown: false }} />
+
+            {/* Mapbox Navigation Map */}
+            <MapboxNavigationMap
+                mapRef={mapRef}
+                initialRegion={{
+                    latitude: rideData.pickup.latitude,
+                    longitude: rideData.pickup.longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
                 }}
+                routeGeoJSON={getRouteGeoJSON()}
+                currentPosition={currentPosition}
+                currentHeading={currentHeading}
+                destination={rideData.destination}
+                cameraConfig={getMapboxCameraConfig()}
+                showUserLocation={true}
+                style={styles.map}
             />
 
-            {/* Navigation View */}
-            <View className="flex-1">
-                {isNavigationActive && hasValidCoordinates ? (
-                    <View className="flex-1">
-                        <MapboxNavigationView
-                            style={{ flex: 1 }}
-                            coordinates={[
-                                {
-                                    latitude: driverLat,
-                                    longitude: driverLng,
-                                },
-                                {
-                                    latitude: destLat,
-                                    longitude: destLng,
-                                }
-                            ]}
-                            routeProfile="mapbox/driving-traffic"
-                            muted={false}
-                            onRouteProgressChanged={(event: { nativeEvent: { distanceRemaining: number; distanceTraveled: number; durationRemaining: number; fractionTraveled: number; }; }) => {
-                                console.log('📊 Route progress:', event.nativeEvent);
-                                handleRouteProgressChange(event.nativeEvent);
-                            }}
-                            onFinalDestinationArrival={() => {
-                                console.log('🏁 Arrived at destination');
-                                if (isAtPickupPhase) {
-                                    handleArrivedAtPickup();
-                                } else if (isAtDestinationPhase) {
-                                    handleArrivedAtDestination();
-                                }
-                            }}
-                            onCancelNavigation={() => {
-                                console.log('❌ Navigation cancelled by user');
-                                handleBackPress();
-                            }}
-                            onRouteChanged={() => {
-                                console.log('🔄 Route changed or rerouted');
-                            }}
-                            onUserOffRoute={() => {
-                                console.log('⚠️ User went off route');
-                            }}
-                            onRoutesLoaded={() => {
-                                console.log('✅ Routes loaded successfully');
-                            }}
-                        />
+            {/* Loading overlay */}
+            {isLoading && (
+                <View style={styles.loadingOverlay}>
+                    <Text style={styles.loadingText}>
+                        {retryCount > 0 ? `Retrying... (${retryCount}/3)` : 'Calculating route...'}
+                    </Text>
+                </View>
+            )}
+
+            {/* Error overlay for retryable errors */}
+            {error && retryCount < 3 && (
+                <View style={styles.errorOverlay}>
+                    <View style={styles.errorCard}>
+                        <Ionicons name="warning-outline" size={24} color="#F59E0B" />
+                        <Text style={styles.errorCardText}>Connection issue - retrying...</Text>
                     </View>
-                ) : (
-                    <View className="flex-1 justify-center items-center bg-gray-100">
-                        <View className="bg-white rounded-2xl p-6 mx-4 items-center">
-                            {!hasValidCoordinates ? (
-                                <>
-                                    <Ionicons name="warning-outline" size={48} color="#F59E0B" />
-                                    <Text className="text-lg font-semibold text-gray-800 mb-2 mt-4">
-                                        Invalid Coordinates
-                                    </Text>
-                                    <Text className="text-gray-600 text-center mb-4">
-                                        The navigation coordinates are invalid. Please check the ride data.
-                                    </Text>
-                                </>
-                            ) : (
-                                <>
-                                    <Text className="text-lg font-semibold text-gray-800 mb-2">
-                                        Initializing Navigation...
-                                    </Text>
-                                    <Text className="text-gray-600 text-center">
-                                        Please wait while we set up your route.
-                                    </Text>
-                                    {__DEV__ && (
-                                        <View className="mt-4 p-2 bg-gray-100 rounded">
-                                            <Text className="text-xs text-gray-600">
-                                                Debug: Driver Location: {driverLocation ? 'Available' : 'Loading...'}
-                                            </Text>
-                                            <Text className="text-xs text-gray-600">
-                                                Mapbox Component: {MapboxNavigationView ? 'Loaded' : 'Failed'}
-                                            </Text>
-                                            <Text className="text-xs text-gray-600">
-                                                Valid Coords: {hasValidCoordinates ? 'Yes' : 'No'}
-                                            </Text>
-                                        </View>
-                                    )}
-                                </>
-                            )}
-                            <TouchableOpacity
-                                onPress={() => router.back()}
-                                className="mt-4 bg-gray-500 rounded-lg px-6 py-3"
-                            >
-                                <Text className="text-white font-medium">Go Back</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                )}
+                </View>
+            )}
 
-                {/* Compact Status Overlay - only show when navigation is active */}
-                {isNavigationActive && hasValidCoordinates && (
-                    <View className="absolute bottom-24 left-4 right-4">
-                        <View className="bg-white bg-opacity-95 rounded-xl p-3 shadow-lg">
-                            <View className="flex-row items-center justify-between">
-                                <View className="flex-1">
-                                    <Text className="text-sm font-bold text-gray-800">
-                                        {getPhaseTitle()}
-                                    </Text>
-                                    <Text className="text-xs text-gray-600 mt-1" numberOfLines={1}>
-                                        {getPhaseInstruction()}
-                                    </Text>
-                                </View>
-
-                                {/* Compact Info */}
-                                <View className="items-end ml-3">
-                                    <Text className="text-sm font-bold text-green-600">
-                                        {rideData.estimatedPrice}
-                                    </Text>
-                                    {(estimatedTimeRemaining || distanceRemaining) && (
-                                        <Text className="text-xs text-gray-500">
-                                            {formatTimeRemaining(estimatedTimeRemaining)} • {formatDistanceRemaining(distanceRemaining)}
-                                        </Text>
-                                    )}
-                                </View>
-
-                                <TouchableOpacity
-                                    onPress={handleBackPress}
-                                    className="ml-2 p-1 bg-gray-100 rounded-full"
-                                >
-                                    <Ionicons name="close" size={16} color="#666" />
-                                </TouchableOpacity>
+            {/* Navigation instructions overlay */}
+            {isNavigating && (
+                <View style={styles.navigationOverlay}>
+                    {/* Progress bar */}
+                    {progress && (
+                        <View style={styles.progressContainer}>
+                            <View style={styles.progressBar}>
+                                <View
+                                    style={[
+                                        styles.progressFill,
+                                        { width: `${Math.min(progress.fractionTraveled * 100, 100)}%` }
+                                    ]}
+                                />
                             </View>
+                            <Text style={styles.progressText}>
+                                {formatDistance(progress.distanceRemaining)} • {formatDuration(progress.durationRemaining)}
+                            </Text>
                         </View>
+                    )}
+
+                    {/* Current instruction */}
+                    {currentInstruction && (
+                        <View style={styles.instructionPanel}>
+                            <View style={styles.instructionMain}>
+                                <View style={styles.maneuverIcon}>
+                                    <Ionicons
+                                        name={getManeuverIcon(currentInstruction.maneuver.type, currentInstruction.maneuver.modifier) as any}
+                                        size={30}
+                                        color="white"
+                                    />
+                                </View>
+                                <View style={styles.instructionText}>
+                                    <Text style={styles.instructionTitle}>
+                                        {currentInstruction.text}
+                                    </Text>
+                                    <Text style={styles.instructionDistance}>
+                                        in {formatDistance(currentInstruction.distance)}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Next instruction preview */}
+                            {nextInstruction && (
+                                <View style={styles.nextInstructionPreview}>
+                                    <Ionicons
+                                        name={getManeuverIcon(nextInstruction.maneuver.type, nextInstruction.maneuver.modifier) as any}
+                                        size={16}
+                                        color="#666"
+                                    />
+                                    <Text style={styles.nextInstructionText}>
+                                        Then {nextInstruction.text.toLowerCase()}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
+                </View>
+            )}
+
+            {/* Control buttons */}
+            <View style={styles.controlsContainer}>
+                <TouchableOpacity
+                    style={styles.stopButton}
+                    onPress={handleStopNavigation}
+                >
+                    <Ionicons name="close" size={24} color="white" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={styles.centerButton}
+                    onPress={handleRecenterCamera}
+                >
+                    <Ionicons name="locate" size={24} color="#007AFF" />
+                </TouchableOpacity>
+            </View>
+
+            {/* Trip info and speed */}
+            <View style={styles.bottomContainer}>
+                {/* Speed display */}
+                {currentPosition && (
+                    <View style={styles.speedometer}>
+                        <Text style={styles.speedText}>
+                            {Math.round((currentPosition.speed || 0) * 3.6)}
+                        </Text>
+                        <Text style={styles.speedUnit}>km/h</Text>
                     </View>
                 )}
 
-                {/* Action Buttons - only show when navigation is active */}
-                {isNavigationActive && hasValidCoordinates && isAtPickupPhase && (
-                    <View className="absolute bottom-4 left-4 right-4">
-                        <TouchableOpacity
-                            onPress={handleArrivedAtPickup}
-                            className="bg-blue-500 rounded-xl p-4 items-center shadow-lg"
-                        >
-                            <Text className="text-white font-semibold text-base">
-                                I've Arrived at Pickup
-                            </Text>
-                        </TouchableOpacity>
+                {/* Trip info */}
+                <View style={styles.tripInfo}>
+                    <View style={styles.tripInfoContent}>
+                        <Text style={styles.tripDestination} numberOfLines={1}>
+                            To: {rideData.destAddress}
+                        </Text>
+                        <Text style={styles.tripPassenger} numberOfLines={1}>
+                            Passenger: {rideData.passengerName}
+                        </Text>
+                        <Text style={styles.tripEarnings}>
+                            Earnings: {rideData.estimatedPrice}
+                        </Text>
                     </View>
-                )}
-
-                {isNavigationActive && hasValidCoordinates && isAtDestinationPhase && (
-                    <View className="absolute bottom-4 left-4 right-4">
-                        <TouchableOpacity
-                            onPress={handleArrivedAtDestination}
-                            className="bg-green-500 rounded-xl p-4 items-center shadow-lg"
-                        >
-                            <Text className="text-white font-semibold text-base">
-                                Trip Completed
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
+                    <TouchableOpacity
+                        style={styles.callButton}
+                        onPress={handleCallPassenger}
+                    >
+                        <Ionicons name="call" size={20} color="white" />
+                    </TouchableOpacity>
+                </View>
             </View>
         </SafeAreaView>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: 'black',
+    },
+    map: {
+        flex: 1,
+    },
+    loadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
+    },
+    loadingText: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: '500',
+    },
+    errorOverlay: {
+        position: 'absolute',
+        top: 100,
+        left: 20,
+        right: 20,
+        zIndex: 200,
+    },
+    errorCard: {
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderRadius: 10,
+        padding: 15,
+        flexDirection: 'row',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+    },
+    errorCardText: {
+        marginLeft: 10,
+        fontSize: 14,
+        color: '#666',
+        fontWeight: '500',
+    },
+    navigationOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
+    },
+    progressContainer: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        padding: 15,
+        alignItems: 'center',
+    },
+    progressBar: {
+        width: '100%',
+        height: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        borderRadius: 2,
+        marginBottom: 5,
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: '#007AFF',
+        borderRadius: 2,
+    },
+    progressText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    instructionPanel: {
+        backgroundColor: 'white',
+        marginHorizontal: 15,
+        marginTop: 15,
+        borderRadius: 15,
+        padding: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    instructionMain: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    maneuverIcon: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: '#007AFF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 15,
+    },
+    instructionText: {
+        flex: 1,
+    },
+    instructionTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 4,
+    },
+    instructionDistance: {
+        fontSize: 14,
+        color: '#666',
+    },
+    nextInstructionPreview: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 15,
+        paddingTop: 15,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+    },
+    nextInstructionText: {
+        fontSize: 14,
+        color: '#666',
+        marginLeft: 8,
+        flex: 1,
+    },
+    controlsContainer: {
+        position: 'absolute',
+        right: 15,
+        top: '50%',
+        transform: [{ translateY: -50 }],
+        zIndex: 50,
+    },
+    stopButton: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: 'rgba(255, 0, 0, 0.8)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 5,
+    },
+    centerButton: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: 'white',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        elevation: 4,
+    },
+    bottomContainer: {
+        position: 'absolute',
+        bottom: 30,
+        left: 15,
+        right: 15,
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        zIndex: 50,
+    },
+    speedometer: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        borderRadius: 12,
+        padding: 12,
+        marginRight: 15,
+        alignItems: 'center',
+        minWidth: 80,
+    },
+    speedText: {
+        color: 'white',
+        fontSize: 20,
+        fontWeight: 'bold',
+        textAlign: 'center',
+    },
+    speedUnit: {
+        color: 'white',
+        fontSize: 12,
+        textAlign: 'center',
+        opacity: 0.8,
+    },
+    tripInfo: {
+        flex: 1,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderRadius: 15,
+        padding: 15,
+        flexDirection: 'row',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    tripInfoContent: {
+        flex: 1,
+    },
+    tripDestination: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 2,
+    },
+    tripPassenger: {
+        fontSize: 12,
+        color: '#666',
+        marginBottom: 2,
+    },
+    tripEarnings: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#007AFF',
+    },
+    callButton: {
+        backgroundColor: '#007AFF',
+        borderRadius: 20,
+        padding: 12,
+        marginLeft: 10,
+    },
+    errorContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    errorTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#333',
+        marginTop: 15,
+        marginBottom: 10,
+    },
+    errorMessage: {
+        fontSize: 16,
+        color: '#666',
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    errorButtonContainer: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    errorButton: {
+        backgroundColor: '#007AFF',
+        borderRadius: 8,
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+    },
+    secondaryButton: {
+        backgroundColor: '#6B7280',
+    },
+    errorButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '500',
+    },
+    secondaryButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '500',
+    },
+});
