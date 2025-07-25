@@ -39,6 +39,21 @@
     },
     "plugins": [
       [
+        "@complexify/expo-mapbox-navigation",
+        {
+          "accessToken": "pk.eyJ1Ijoib2xla21vcmF3c2tpIiwiYSI6ImNtZGkwcmczYTAwZmoyanM1eGdzZWh4NGsifQ.xHnSlxwo27wFFs2o6-YsTg",
+          "mapboxMapsVersion": "11.7.0"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location to find nearby rides."
@@ -58,11 +73,13 @@
         "@rnmapbox/maps",
         {
           "RNMapboxMapsImpl": "mapbox",
-          "RNMapboxMapsAccessToken": "pk.eyJ1Ijoib2xla21vcmF3c2tpIiwiYSI6ImNtY21jaXZnYTBnaTAybHMzMWp4cnB2MmYifQ.gmAgP14PfVyDhelFkHeFsg"
+          "RNMapboxMapsAccessToken": "pk.eyJ1Ijoib2xla21vcmF3c2tpIiwiYSI6ImNtY21jaXZnYTBnaTAybHMzMWp4cnB2MmYifQ.gmAgP14PfVyDhelFkHeFsg",
+          "RNMapboxMapsVersion": "11.7.0"
         }
       ],
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-build-properties"
     ],
     "experiments": {
       "typedRoutes": true
