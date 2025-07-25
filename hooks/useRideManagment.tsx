@@ -1,4 +1,4 @@
-// hooks/useRideManagement.ts
+// hooks/useRideManagement.tsx - Updated version
 import { useCallback } from 'react';
 import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -40,24 +40,57 @@ export const useRideManagement = ({
     const handleAcceptRide = useCallback(async (rideId: string) => {
         setAcceptingRideId(rideId);
 
+        // Find the ride data
+        const rideToAccept = availableRides.find(ride => ride.id === rideId);
+
+        if (!rideToAccept) {
+            setAcceptingRideId(null);
+            Alert.alert('Error', 'Ride data not found');
+            return;
+        }
+
         acceptRide(rideId, {
             onSuccess: (data) => {
                 const acceptedRide = data.ride;
                 setAcceptingRideId(null);
 
-                Alert.alert(
-                    'Ride Accepted!',
-                    `You have successfully accepted the ride from ${acceptedRide.originAddress} to ${acceptedRide.destinationAddress}.`,
-                    [
-                        {
-                            text: 'View Details',
-                            onPress: () => {
-                                console.log('Navigate to ride details:', acceptedRide);
-                            }
-                        },
-                        { text: 'OK', style: 'default' }
-                    ]
-                );
+                console.log('✅ Ride accepted successfully, navigating to driver navigation...');
+                console.log('Ride data:', acceptedRide);
+
+                // Validate required data before navigation
+                if (!acceptedRide.originCoordinates || !acceptedRide.destinationCoordinates) {
+                    Alert.alert('Error', 'Missing ride location data. Please try again.');
+                    return;
+                }
+
+                try {
+                    // Navigate immediately to driver navigation screen
+                    router.push({
+                        pathname: '/(app)/driver-navigation',
+                        params: {
+                            rideId: acceptedRide.id,
+                            pickupLat: acceptedRide.originCoordinates.latitude.toString(),
+                            pickupLng: acceptedRide.originCoordinates.longitude.toString(),
+                            pickupAddress: acceptedRide.originAddress,
+                            destLat: acceptedRide.destinationCoordinates.latitude.toString(),
+                            destLng: acceptedRide.destinationCoordinates.longitude.toString(),
+                            destAddress: acceptedRide.destinationAddress,
+                            passengerName: acceptedRide.userEmail?.split('@')[0] || 'Passenger',
+                            estimatedPrice: acceptedRide.customPrice || acceptedRide.estimatedPrice || '$0.00',
+                        }
+                    });
+
+                    console.log('🚗 Navigation started successfully');
+                } catch (error) {
+                    console.error('❌ Navigation error:', error);
+                    Alert.alert(
+                        'Navigation Error',
+                        'Failed to start navigation. Please try again.',
+                        [
+                            { text: 'OK', onPress: () => console.log('Navigation error acknowledged') }
+                        ]
+                    );
+                }
             },
             onError: (error: any) => {
                 setAcceptingRideId(null);
@@ -72,7 +105,7 @@ export const useRideManagement = ({
                 );
             },
         });
-    }, [acceptRide, setAcceptingRideId]);
+    }, [acceptRide, setAcceptingRideId, availableRides, router]);
 
     const handleRejectRide = useCallback(async (rideId: string) => {
         try {
