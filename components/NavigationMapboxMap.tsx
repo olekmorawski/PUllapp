@@ -1,6 +1,5 @@
-// components/NavigationMapboxMap.tsx - Enhanced with auto-center and route display
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
-import { View, Text, ActivityIndicator, Dimensions, ViewStyle } from 'react-native';
+import { View, Text, ActivityIndicator, Dimensions, ViewStyle, Image } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,12 +8,11 @@ Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Safe number validation
+// Validation helpers
 const isValidNumber = (value: any): value is number => {
     return typeof value === 'number' && !isNaN(value) && isFinite(value);
 };
 
-// Safe coordinate validation
 const isValidCoordinate = (coord: any): coord is { latitude: number; longitude: number } => {
     return coord &&
         typeof coord === 'object' &&
@@ -25,7 +23,6 @@ const isValidCoordinate = (coord: any): coord is { latitude: number; longitude: 
         coord.longitude >= -180 && coord.longitude <= 180;
 };
 
-// Safe coordinate array validation
 const isValidCoordinateArray = (coords: any): coords is [number, number] => {
     return Array.isArray(coords) &&
         coords.length === 2 &&
@@ -36,30 +33,27 @@ const isValidCoordinateArray = (coords: any): coords is [number, number] => {
 };
 
 interface NavigationMapboxMapProps {
-    // Navigation specific props
     driverLocation?: { latitude: number; longitude: number } | null;
     destination?: { latitude: number; longitude: number } | null;
     routeGeoJSON?: GeoJSON.Feature | null;
-
-    // Camera control props
+    maneuverPoints?: Array<{
+        coordinate: [number, number];
+        type: string;
+        modifier?: string;
+        instruction: string;
+    }>;
     bearing?: number;
     pitch?: number;
     zoomLevel?: number;
     followMode?: 'none' | 'follow' | 'course' | 'compass';
-
-    // Event handlers
     onLocationUpdate?: (location: Mapbox.Location) => void;
     onCameraChange?: (state: any) => void;
-
-    // UI props
     showUserLocation?: boolean;
     showCompass?: boolean;
     showScaleBar?: boolean;
     enableRotation?: boolean;
     enablePitching?: boolean;
     enableScrolling?: boolean;
-
-    // Style props
     mapStyle?: string;
     children?: React.ReactNode;
 }
@@ -71,10 +65,25 @@ export interface NavigationMapboxMapRef {
     resetView: () => void;
 }
 
+// Arrow icon generation function
+const getArrowIcon = (type: string, modifier?: string): string => {
+    // Base64 encoded arrow icons for different turn types
+    const arrows = {
+        straight: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAALEwAACxMBAJqcGAAAAlJJREFUaEPtmE1IVFEUx//nzZuZNzOOH6MzjqKWFhZBUBAUQrQIAqMPCFpEixZBtGjRol2baNGiRYsWLVq0aBEEQUEQFASBQVAQGH2YpqbjODrjzLz3bnhDIzPOu2/evBlj5m0f5/zP75x77rn3EvR4UI/jQwGQa4XaVqD09DTi8TgikQji8TgURQEhBKFQCJFIBOFwGJIkgXPe0qqwLWCCEpfLVQSUgBYUMNsCJihxOp1FQAloQQGzLaACfr8/C4RhGPA6PaBOCgCgtoa7Kv0B+AMBeL1eUEoBgBCCeDyOg0ePIDs7m3ZFdIKVBrBl+w5s3boVFJQQRmqYUDNDjBFhKaqKsrIy7Ny1C9u3b09R2JHJRScBSZKwZs0arFmzJgNaL0NTD2e8LAKGlEilUlAUBY7MBzhTGJhO4v7jp7j75ClkRW1PoJgA',
+        left: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAALEwAACxMBAJqcGAAAAmhJREFUaEPtmMtrFEEQxr+e2Z3ZneyuMRtjNnoQxIMgCIIgngTxJIgHQRAEQRAEQRAEQRAEQRAEQTx48B948B94EARBEATxIngQRCMaY0yy2ewkOzs7011ST2DTTFdVV1f1zNuvvqrunhGo8RU1jg8JAJkKVK0Cs2fPRn19PRobG9HQ0IBQKARRFBEMBhEIBOD3+yGKIjjn5VtgDWCCUhRFaQFJUGsJmAFMUDKZTFpAEtRaAmYAE5RhGGkBSVBrCZgBTFCmaaYFJEGtJWAGMEE5jpMWkAS1loAZIJVKoaOjA729vejs7ERbWxva29vR0tKCQCAAQRAgiiIEQYAgCHA6nRBFEaIowuVyweVywePxwO12w+v1wu/3IxAIIBgMIhQKIRwOo7GxEU1NTWhubobf74fL5YLb7YbH44HP50MgEEAwGEQoFEI4HEY0GkVTUxNisRii0SjC4XDxe5/PVzxbEAQ4HA7IsgyHwwFZliFJEiRJgiiKkGUZTqcTLpervP7cCgQJxONx',
+        right: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAALEwAACxMBAJqcGAAAAmJJREFUaEPtmF1IFFEUx//nzuzs7O6sru6qq5ZFUBQEBUFBEBQFQfRBHxQE0QdBQRAUBEFBEBQEQUEQFAQFQUFQ9EEQRL0UBEFBEBQEQUFQFvaxuu7Hzs7OzNwbnBlZ151779yZNaX7Nuf8z+/ce+49dx7BEh9kieMDAZBvBYpWgUQigUQigWQyiVQqBVVVQQhBJBJBJBJBOByGJEngrhQC8AA+nw+iKBYBQkMLBCCMCU3T4Pf7iwChGiNtgBdw3gBegGUZqVQKi4uLxTLiWglMgPl8HqlUCgDg8/ng9Xoh2xAKhVBfX49IJIJgMAiPxwOXywWPxwOv11t8WedyOWSzWWQyGaTTaSwsLCCRSCCRSCCZTGJxcRHpdBqKokBRFKiqimw2i2w2C03TkMvlkMvloGkaNE2DpmkwDAOGYcAwDGGS/K9AW1sbdu3ahd27d',
+    };
+
+    if (type === 'turn' && modifier === 'left') return arrows.left;
+    if (type === 'turn' && modifier === 'right') return arrows.right;
+    return arrows.straight;
+};
+
 const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxMapProps>(({
                                                                                               driverLocation,
                                                                                               destination,
                                                                                               routeGeoJSON,
+                                                                                              maneuverPoints = [],
                                                                                               bearing = 0,
                                                                                               pitch = 60,
                                                                                               zoomLevel = 18,
@@ -109,6 +118,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         validDriverLocation,
         validDestination,
         hasRoute: !!routeGeoJSON,
+        maneuverPointsCount: maneuverPoints.length,
         validBearing,
         validPitch,
         validZoomLevel,
@@ -187,15 +197,15 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         }
     }), [validDriverLocation, validBearing, validPitch, validZoomLevel, isMapReady]);
 
-    // Auto-follow driver location with throttling
+    // Auto-follow driver location with smooth transitions
     useEffect(() => {
         if (!isMapReady || !cameraRef.current || !validDriverLocation || followMode === 'none') {
             return;
         }
 
-        // Throttle camera updates to prevent excessive animation
+        // Throttle camera updates
         const now = Date.now();
-        if (now - lastCameraUpdate < 1000) { // Min 1 second between updates
+        if (now - lastCameraUpdate < 1000) {
             return;
         }
 
@@ -204,7 +214,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
 
             setIsLoading(true);
             try {
-                console.log('📱 Auto-updating camera to follow driver:', validDriverLocation);
+                console.log('📱 Auto-updating camera to follow driver');
 
                 const cameraConfig: any = {
                     centerCoordinate: [validDriverLocation.longitude, validDriverLocation.latitude],
@@ -230,7 +240,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
 
         const timeoutId = setTimeout(updateCamera, 100);
         return () => clearTimeout(timeoutId);
-    }, [isMapReady, validDriverLocation, validBearing, validPitch, validZoomLevel, followMode]);
+    }, [isMapReady, validDriverLocation, validBearing, validPitch, validZoomLevel, followMode, lastCameraUpdate]);
 
     // Map event handlers
     const handleMapLoaded = useCallback(() => {
@@ -238,7 +248,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         setIsMapReady(true);
         setMapError(null);
 
-        // Auto-center on driver once map is ready
+        // Initial camera setup
         if (validDriverLocation && cameraRef.current) {
             setTimeout(() => {
                 cameraRef.current?.setCamera({
@@ -276,25 +286,25 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         }
     }, [onLocationUpdate]);
 
-    // Route styling
+    // Enhanced route styling with better visibility
     const routeStyles = {
         routeCasing: {
-            lineColor: 'white',
-            lineWidth: 10,
+            lineColor: '#000000',
+            lineWidth: 14,
+            lineCap: 'round' as const,
+            lineJoin: 'round' as const,
+            lineOpacity: 0.4
+        },
+        routeOutline: {
+            lineColor: '#FFFFFF',
+            lineWidth: 12,
             lineCap: 'round' as const,
             lineJoin: 'round' as const,
             lineOpacity: 0.8
         },
-        routeOutline: {
-            lineColor: '#1a73e8',
-            lineWidth: 8,
-            lineCap: 'round' as const,
-            lineJoin: 'round' as const,
-            lineOpacity: 0.7
-        },
         routeLine: {
             lineColor: '#4285F4',
-            lineWidth: 6,
+            lineWidth: 8,
             lineCap: 'round' as const,
             lineJoin: 'round' as const,
             lineOpacity: 1.0
@@ -334,6 +344,22 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         height: 40,
         backgroundColor: '#EA4335',
         borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 3,
+        borderColor: 'white',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 5,
+    };
+
+    const maneuverArrowStyle: ViewStyle = {
+        width: 50,
+        height: 50,
+        backgroundColor: '#4285F4',
+        borderRadius: 25,
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 3,
@@ -410,51 +436,91 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 onCameraChanged={handleCameraChanged}
                 onError={handleMapError}
             >
-                {/* Camera with proper follow settings */}
+                {/* Camera with navigation-specific settings */}
                 <Mapbox.Camera
                     ref={cameraRef}
-                    followUserLocation={followMode === 'follow'}
-                    followUserMode={followMode === 'course' ? 'course' : 'normal'}
+                    followUserLocation={followMode !== 'none'}
+                    followUserMode={followMode === 'course' ? 'course' : followMode === 'compass' ? 'compass' : 'normal'}
                     followZoomLevel={validZoomLevel}
                     followPitch={validPitch}
                 />
 
-                {/* User Location Display */}
+                {/* User Location with custom puck */}
                 {showUserLocation && (
                     <Mapbox.UserLocation
                         visible={true}
                         showsUserHeadingIndicator={true}
-                        minDisplacement={1} // Update every meter
+                        minDisplacement={1}
                         onUpdate={handleLocationUpdate}
-                    />
+                    >
+                        <View style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 12,
+                            backgroundColor: '#4285F4',
+                            borderWidth: 3,
+                            borderColor: 'white',
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.3,
+                            shadowRadius: 4,
+                            elevation: 5,
+                        }} />
+                    </Mapbox.UserLocation>
                 )}
 
-                {/* Route Display with Multiple Layers */}
-                {routeGeoJSON && (
+                {/* Route Display - Multiple layers for better visibility */}
+                {routeGeoJSON && routeGeoJSON.geometry && (
                     <Mapbox.ShapeSource
                         id="routeSource"
                         shape={routeGeoJSON}
                         onError={(error) => console.warn('Route source error:', error)}
                     >
-                        {/* Route casing (white outline) */}
+                        {/* Black casing for contrast */}
                         <Mapbox.LineLayer
                             id="routeCasing"
                             style={routeStyles.routeCasing}
+                            belowLayerID="road-label"
                         />
 
-                        {/* Route outline (darker blue) */}
+                        {/* White outline */}
                         <Mapbox.LineLayer
                             id="routeOutline"
                             style={routeStyles.routeOutline}
+                            belowLayerID="road-label"
                         />
 
-                        {/* Main route line */}
+                        {/* Blue route line */}
                         <Mapbox.LineLayer
                             id="routeLayer"
                             style={routeStyles.routeLine}
+                            belowLayerID="road-label"
                         />
                     </Mapbox.ShapeSource>
                 )}
+
+                {/* Maneuver arrows at decision points */}
+                {maneuverPoints.map((point, index) => (
+                    <Mapbox.PointAnnotation
+                        key={`maneuver_${index}`}
+                        id={`maneuver_${index}`}
+                        coordinate={point.coordinate}
+                    >
+                        <View style={maneuverArrowStyle}>
+                            <Ionicons
+                                name={
+                                    point.type === 'turn' && point.modifier === 'left' ? 'arrow-back' :
+                                        point.type === 'turn' && point.modifier === 'right' ? 'arrow-forward' :
+                                            point.type === 'depart' ? 'play' :
+                                                point.type === 'arrive' ? 'flag' :
+                                                    'arrow-up'
+                                }
+                                size={24}
+                                color="white"
+                            />
+                        </View>
+                    </Mapbox.PointAnnotation>
+                ))}
 
                 {/* Destination Marker */}
                 {validDestination && (
@@ -471,35 +537,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 {/* Custom children */}
                 {children}
             </Mapbox.MapView>
-
-            {/* Debug info for route */}
-            {__DEV__ && (
-                <View style={{
-                    position: 'absolute',
-                    top: 60,
-                    right: 10,
-                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                    padding: 8,
-                    borderRadius: 4,
-                    maxWidth: 200
-                }}>
-                    <Text style={{ color: 'white', fontSize: 10 }}>
-                        Map Ready: {isMapReady ? 'Yes' : 'No'}
-                    </Text>
-                    <Text style={{ color: 'white', fontSize: 10 }}>
-                        Driver: {validDriverLocation ? 'Located' : 'None'}
-                    </Text>
-                    <Text style={{ color: 'white', fontSize: 10 }}>
-                        Route: {routeGeoJSON ? 'Loaded' : 'None'}
-                    </Text>
-                    <Text style={{ color: 'white', fontSize: 10 }}>
-                        Follow: {followMode}
-                    </Text>
-                    <Text style={{ color: 'white', fontSize: 10 }}>
-                        Bearing: {Math.round(validBearing)}°
-                    </Text>
-                </View>
-            )}
         </View>
     );
 });

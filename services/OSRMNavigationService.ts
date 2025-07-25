@@ -1,4 +1,4 @@
-// services/OSRMNavigationService.ts - Fixed network issues and improved error handling
+// services/OSRMNavigationService.ts - Enhanced with Better Route Handling
 import * as Location from 'expo-location';
 
 export interface NavigationCoordinates {
@@ -70,14 +70,16 @@ export class OSRMNavigationService {
     private listeners: { [K in NavigationEventType]?: Array<(data: NavigationEvents[K]) => void> } = {};
     private locationSubscription: Location.LocationSubscription | null = null;
     private lastAnnouncedStep: number = -1;
+    private smoothedHeading: number = 0;
+    private headingHistory: number[] = [];
 
-    // Multiple OSRM endpoints for redundancy
+    // OSRM endpoints with fallbacks
     private osrmEndpoints: string[] = [
         'https://router.project-osrm.org',
-        // Add more endpoints if needed
+        'https://routing.openstreetmap.de',
     ];
 
-    // Event system with proper typing
+    // Event system
     on<T extends NavigationEventType>(event: T, callback: (data: NavigationEvents[T]) => void): void {
         if (!this.listeners[event]) {
             this.listeners[event] = [];
@@ -99,21 +101,49 @@ export class OSRMNavigationService {
         }
     }
 
-    // Enhanced route calculation with fallback endpoints
+    // Calculate smooth heading from history
+    private calculateSmoothHeading(newHeading: number): number {
+        this.headingHistory.push(newHeading);
+        if (this.headingHistory.length > 5) {
+            this.headingHistory.shift();
+        }
+
+        // Calculate weighted average
+        let totalWeight = 0;
+        let weightedSum = 0;
+        this.headingHistory.forEach((heading, index) => {
+            const weight = index + 1;
+            totalWeight += weight;
+            weightedSum += heading * weight;
+        });
+
+        return weightedSum / totalWeight;
+    }
+
+    // Enhanced route calculation with optimizations
     async calculateRoute(start: NavigationCoordinates, destination: NavigationCoordinates): Promise<NavigationRoute> {
-        console.log('🗺️ Calculating route from', start, 'to', destination);
+        console.log('🗺️ Calculating optimized route from', start, 'to', destination);
 
         let lastError: Error | null = null;
 
-        // Try each endpoint
         for (const endpoint of this.osrmEndpoints) {
             try {
-                const url = `${endpoint}/route/v1/driving/${start.longitude},${start.latitude};${destination.longitude},${destination.latitude}?steps=true&geometries=geojson&overview=full`;
+                // Build URL with additional options for better routing
+                const params = new URLSearchParams({
+                    steps: 'true',
+                    geometries: 'geojson',
+                    overview: 'full',
+                    annotations: 'true',
+                    continue_straight: 'default',
+                    alternatives: 'false'
+                });
+
+                const url = `${endpoint}/route/v1/driving/${start.longitude},${start.latitude};${destination.longitude},${destination.latitude}?${params}`;
 
                 console.log('🌐 Trying OSRM endpoint:', endpoint);
 
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
                 const response = await fetch(url, {
                     signal: controller.signal,
@@ -137,10 +167,16 @@ export class OSRMNavigationService {
 
                 const route = data.routes[0];
 
+                // Validate route data
+                if (!route.geometry || !route.legs || route.legs.length === 0) {
+                    throw new Error('Invalid route data received');
+                }
+
                 console.log('✅ Route calculated successfully:', {
                     distance: route.distance,
                     duration: route.duration,
-                    steps: route.legs[0]?.steps?.length || 0
+                    steps: route.legs[0]?.steps?.length || 0,
+                    coordinates: route.geometry.coordinates?.length || 0
                 });
 
                 return {
@@ -156,33 +192,24 @@ export class OSRMNavigationService {
             } catch (error) {
                 console.warn(`❌ Failed with endpoint ${endpoint}:`, error);
                 lastError = error instanceof Error ? error : new Error('Unknown error occurred');
-
-                // If it's an abort error (timeout), try next endpoint
-                if (error instanceof Error && error.name === 'AbortError') {
-                    console.log('⏱️ Request timed out, trying next endpoint...');
-                    continue;
-                }
-
-                // For other errors, also try next endpoint
                 continue;
             }
         }
 
-        // If all endpoints failed
-        console.error('💥 All OSRM endpoints failed');
         throw new Error(`Failed to calculate route: ${lastError?.message || 'All routing services unavailable'}`);
     }
 
-    // Parse OSRM steps into navigation instructions with proper typing
+    // Enhanced instruction parsing with better voice guidance
     private parseInstructions(steps: any[]): NavigationInstruction[] {
         return steps.map((step, index) => {
             const maneuver = step.maneuver || {};
-            const instruction = this.getInstructionText(maneuver);
+            const instruction = this.getInstructionText(maneuver, step.name);
+            const distance = step.distance || 0;
 
             return {
                 id: `step_${index}`,
                 text: instruction,
-                distance: step.distance || 0,
+                distance,
                 duration: step.duration || 0,
                 coordinates: (step.geometry?.coordinates || []).map((coord: [number, number]) => ({
                     latitude: coord[1],
@@ -197,36 +224,55 @@ export class OSRMNavigationService {
                         longitude: maneuver.location?.[0] || 0
                     }
                 },
-                voiceInstruction: this.generateVoiceInstruction(instruction, step.distance || 0)
+                voiceInstruction: this.generateVoiceInstruction(instruction, distance, maneuver.type)
             };
         });
     }
 
-    private getInstructionText(maneuver: any): string {
+    private getInstructionText(maneuver: any, roadName?: string): string {
         const { type, modifier } = maneuver;
+        const road = roadName ? ` onto ${roadName}` : '';
 
         switch (type) {
             case 'depart':
-                return `Head ${this.getDirectionFromModifier(modifier)}`;
+                return `Head ${this.getDirectionFromModifier(modifier)}${road}`;
             case 'turn':
-                return `Turn ${modifier || 'right'}`;
+                return `Turn ${modifier || 'right'}${road}`;
             case 'new name':
-                return modifier ? `Continue ${modifier}` : 'Continue straight';
+                return modifier ? `Continue ${modifier}${road}` : `Continue straight${road}`;
             case 'merge':
-                return `Merge ${modifier || 'right'}`;
+                return `Merge ${modifier || 'right'}${road}`;
             case 'ramp':
-                return `Take the ramp ${modifier || 'right'}`;
+                return `Take the ramp ${modifier || ''}${road}`;
+            case 'fork':
+                return `Keep ${modifier || 'right'} at the fork${road}`;
+            case 'end of road':
+                return `Turn ${modifier || 'right'} at the end of the road${road}`;
             case 'roundabout':
-                return 'Enter the roundabout';
+                return `Enter the roundabout and take the ${this.getOrdinal(maneuver.exit || 1)} exit`;
+            case 'rotary':
+                return `Enter the rotary${road}`;
             case 'exit roundabout':
-                return 'Exit the roundabout';
+                return `Exit the roundabout${road}`;
+            case 'exit rotary':
+                return `Exit the rotary${road}`;
             case 'arrive':
-                return 'You have arrived at your destination';
+                return modifier === 'left' ?
+                    'You have arrived at your destination on the left' :
+                    modifier === 'right' ?
+                        'You have arrived at your destination on the right' :
+                        'You have arrived at your destination';
             case 'continue':
-                return 'Continue straight';
+                return `Continue straight${road}`;
             default:
-                return 'Continue straight';
+                return `Continue${road}`;
         }
+    }
+
+    private getOrdinal(n: number): string {
+        const s = ['th', 'st', 'nd', 'rd'];
+        const v = n % 100;
+        return n + (s[(v - 20) % 10] || s[v] || s[0]);
     }
 
     private getDirectionFromModifier(modifier?: string): string {
@@ -245,11 +291,27 @@ export class OSRMNavigationService {
         return directions[modifier] || 'straight';
     }
 
-    private generateVoiceInstruction(instruction: string, distance: number): string {
-        if (distance > 1000) {
-            return `In ${Math.round(distance / 1000)} kilometers, ${instruction.toLowerCase()}`;
-        } else if (distance > 100) {
-            return `In ${Math.round(distance)} meters, ${instruction.toLowerCase()}`;
+    private generateVoiceInstruction(instruction: string, distance: number, type: string): string {
+        // Special cases for better voice guidance
+        if (type === 'arrive') {
+            return instruction;
+        }
+
+        if (type === 'depart') {
+            return instruction;
+        }
+
+        // Distance-based voice instructions
+        if (distance > 2000) {
+            return `In ${(distance / 1000).toFixed(1)} kilometers, ${instruction.toLowerCase()}`;
+        } else if (distance > 1000) {
+            return `In 1 kilometer, ${instruction.toLowerCase()}`;
+        } else if (distance > 500) {
+            return `In ${Math.round(distance / 100) * 100} meters, ${instruction.toLowerCase()}`;
+        } else if (distance > 200) {
+            return `In ${Math.round(distance / 50) * 50} meters, ${instruction.toLowerCase()}`;
+        } else if (distance > 50) {
+            return `Soon, ${instruction.toLowerCase()}`;
         } else {
             return instruction;
         }
@@ -258,7 +320,7 @@ export class OSRMNavigationService {
     // Start navigation with enhanced location tracking
     async startNavigation(start: NavigationCoordinates, destination: NavigationCoordinates): Promise<NavigationRoute> {
         try {
-            console.log('🚀 Starting navigation...');
+            console.log('🚀 Starting enhanced navigation...');
 
             // Calculate route
             const routeData = await this.calculateRoute(start, destination);
@@ -268,8 +330,10 @@ export class OSRMNavigationService {
             this.currentStepIndex = 0;
             this.lastAnnouncedStep = -1;
             this.isNavigating = true;
+            this.headingHistory = [];
+            this.smoothedHeading = 0;
 
-            // Start precise location tracking
+            // Start high-accuracy location tracking
             await this.startLocationTracking();
 
             this.emit('navigationStarted', {
@@ -293,12 +357,13 @@ export class OSRMNavigationService {
             throw new Error('Location permission denied. Please enable location access to use navigation.');
         }
 
-        // High-accuracy location tracking for navigation
+        // Enhanced location tracking for navigation
         this.locationSubscription = await Location.watchPositionAsync(
             {
                 accuracy: Location.Accuracy.BestForNavigation,
                 timeInterval: 500, // Update every 500ms
-                distanceInterval: 2, // Update every 2 meters
+                distanceInterval: 1, // Update every meter
+                mayShowUserSettingsDialog: true,
             },
             (location: Location.LocationObject) => {
                 this.currentPosition = location;
@@ -310,10 +375,16 @@ export class OSRMNavigationService {
     private updateNavigationProgress(location: Location.LocationObject): void {
         if (!this.route || !this.instructions.length) return;
 
+        // Calculate smooth heading
+        if (location.coords.heading !== null && location.coords.heading !== undefined) {
+            this.smoothedHeading = this.calculateSmoothHeading(location.coords.heading);
+        }
+
         const progress = this.calculateNavigationProgress(location);
 
-        // Check if we should advance to next instruction
-        if (this.shouldAdvanceToNextStep(location)) {
+        // Advanced step detection
+        const shouldAdvance = this.shouldAdvanceToNextStep(location);
+        if (shouldAdvance) {
             this.currentStepIndex++;
 
             // Announce new instruction
@@ -325,14 +396,14 @@ export class OSRMNavigationService {
             }
         }
 
-        // Check if arrived at destination
+        // Check arrival with better accuracy
         if (this.hasArrivedAtDestination(location)) {
             this.stopNavigation();
             this.emit('destinationReached', { location });
             return;
         }
 
-        // Emit progress update with location and heading
+        // Emit progress update
         this.emit('progressUpdate', progress);
     }
 
@@ -340,14 +411,18 @@ export class OSRMNavigationService {
         const currentInstruction = this.instructions[this.currentStepIndex];
         const nextInstruction = this.instructions[this.currentStepIndex + 1];
 
-        // Calculate remaining distance to destination
+        // Calculate distances
         const remainingDistance = this.calculateRemainingDistance(location);
         const totalDistance = this.route?.distance || 0;
         const distanceTraveled = totalDistance - remainingDistance;
 
+        // Calculate remaining duration based on average speed
+        const speed = location.coords.speed || 11.1; // Default to 40 km/h
+        const remainingDuration = remainingDistance / speed;
+
         return {
             distanceRemaining: remainingDistance,
-            durationRemaining: this.calculateRemainingDuration(remainingDistance),
+            durationRemaining: remainingDuration,
             distanceTraveled,
             fractionTraveled: totalDistance > 0 ? Math.min(distanceTraveled / totalDistance, 1) : 0,
             currentStepIndex: this.currentStepIndex,
@@ -355,7 +430,7 @@ export class OSRMNavigationService {
             nextInstruction,
             totalSteps: this.instructions.length,
             location: location.coords,
-            heading: location.coords.heading || 0
+            heading: this.smoothedHeading
         };
     }
 
@@ -363,27 +438,90 @@ export class OSRMNavigationService {
         if (this.currentStepIndex >= this.instructions.length - 1) return false;
 
         const currentInstruction = this.instructions[this.currentStepIndex];
+        const nextInstruction = this.instructions[this.currentStepIndex + 1];
+
+        if (!nextInstruction || !nextInstruction.maneuver) return false;
+
         const distanceToManeuver = this.getDistanceBetweenPoints(
             location.coords,
-            currentInstruction.maneuver.location
+            nextInstruction.maneuver.location
         );
 
-        // Advance if we're within 15 meters of the maneuver point
-        return distanceToManeuver < 15;
+        // Dynamic threshold based on speed
+        const speed = location.coords.speed || 5; // m/s
+        const threshold = Math.max(15, Math.min(50, speed * 3)); // 3 seconds ahead
+
+        return distanceToManeuver < threshold;
     }
 
     private calculateRemainingDistance(location: Location.LocationObject): number {
         if (!this.route?.coordinates.length) return 0;
 
-        // Find closest point on route and calculate distance from there to end
-        const destination = this.route.coordinates[this.route.coordinates.length - 1];
-        return this.getDistanceBetweenPoints(location.coords, destination);
+        let remainingDistance = 0;
+        let foundClosestPoint = false;
+        let minDistanceToRoute = Infinity;
+        let closestPointIndex = 0;
+
+        // Find closest point on route
+        for (let i = 0; i < this.route.coordinates.length - 1; i++) {
+            const distanceToSegment = this.getDistanceToLineSegment(
+                location.coords,
+                this.route.coordinates[i],
+                this.route.coordinates[i + 1]
+            );
+
+            if (distanceToSegment < minDistanceToRoute) {
+                minDistanceToRoute = distanceToSegment;
+                closestPointIndex = i;
+            }
+        }
+
+        // Calculate remaining distance from closest point
+        for (let i = closestPointIndex; i < this.route.coordinates.length - 1; i++) {
+            remainingDistance += this.getDistanceBetweenPoints(
+                this.route.coordinates[i],
+                this.route.coordinates[i + 1]
+            );
+        }
+
+        return remainingDistance;
     }
 
-    private calculateRemainingDuration(remainingDistance: number): number {
-        // Estimate based on average speed
-        const averageSpeedMps = 11.1; // ~40 km/h
-        return remainingDistance / averageSpeedMps;
+    private getDistanceToLineSegment(
+        point: Location.LocationObjectCoords | NavigationCoordinates,
+        lineStart: NavigationCoordinates,
+        lineEnd: NavigationCoordinates
+    ): number {
+        const A = point.longitude - lineStart.longitude;
+        const B = point.latitude - lineStart.latitude;
+        const C = lineEnd.longitude - lineStart.longitude;
+        const D = lineEnd.latitude - lineStart.latitude;
+
+        const dot = A * C + B * D;
+        const lenSq = C * C + D * D;
+        let param = -1;
+
+        if (lenSq !== 0) {
+            param = dot / lenSq;
+        }
+
+        let xx, yy;
+
+        if (param < 0) {
+            xx = lineStart.longitude;
+            yy = lineStart.latitude;
+        } else if (param > 1) {
+            xx = lineEnd.longitude;
+            yy = lineEnd.latitude;
+        } else {
+            xx = lineStart.longitude + param * C;
+            yy = lineStart.latitude + param * D;
+        }
+
+        const dx = point.longitude - xx;
+        const dy = point.latitude - yy;
+
+        return Math.sqrt(dx * dx + dy * dy) * 111320; // Convert to meters
     }
 
     private hasArrivedAtDestination(location: Location.LocationObject): boolean {
@@ -392,8 +530,11 @@ export class OSRMNavigationService {
         const destination = this.route.coordinates[this.route.coordinates.length - 1];
         const distanceToDestination = this.getDistanceBetweenPoints(location.coords, destination);
 
-        // Consider arrived if within 25 meters
-        return distanceToDestination < 25;
+        // Dynamic arrival threshold based on accuracy
+        const accuracy = location.coords.accuracy || 10;
+        const threshold = Math.max(25, accuracy * 2);
+
+        return distanceToDestination < threshold;
     }
 
     private getDistanceBetweenPoints(
@@ -425,6 +566,8 @@ export class OSRMNavigationService {
         this.currentStepIndex = 0;
         this.currentPosition = null;
         this.lastAnnouncedStep = -1;
+        this.headingHistory = [];
+        this.smoothedHeading = 0;
 
         this.emit('navigationStopped', {});
     }
@@ -452,5 +595,9 @@ export class OSRMNavigationService {
 
     getAllInstructions(): NavigationInstruction[] {
         return [...this.instructions];
+    }
+
+    getSmoothedHeading(): number {
+        return this.smoothedHeading;
     }
 }

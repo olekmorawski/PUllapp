@@ -1,8 +1,9 @@
-// app/(app)/driver-navigation.tsx - Fixed with OSRM integration
+// app/(app)/driver-navigation.tsx - Fixed with Voice Guidance and Maneuver Arrows
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Alert, SafeAreaView, Dimensions, Animated, ViewStyle } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, SafeAreaView, Dimensions, Animated, ViewStyle, Switch } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Speech from 'expo-speech';
 import { useOSRMNavigation } from '@/hooks/useOSRMNavigation';
 import { RideNavigationData } from '@/hooks/useEnhancedDriverNavigation';
 import NavigationMapboxMap, { NavigationMapboxMapRef } from '@/components/NavigationMapboxMap';
@@ -16,6 +17,13 @@ import {
 } from '@/components/NavigationUIComponents';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Voice settings
+const VOICE_OPTIONS = {
+    language: 'en-US',
+    pitch: 1,
+    rate: 0.9,
+};
 
 // Safe parameter validation
 const validateParams = (params: any): RideNavigationData | null => {
@@ -62,6 +70,8 @@ interface NavigationInfoPanelProps {
     onCancel: () => void;
     formatDistance: (meters: number) => string;
     formatDuration: (seconds: number) => string;
+    isMuted: boolean;
+    onMuteToggle: () => void;
 }
 
 const NavigationInfoPanel: React.FC<NavigationInfoPanelProps> = ({
@@ -71,7 +81,9 @@ const NavigationInfoPanel: React.FC<NavigationInfoPanelProps> = ({
                                                                      rideData,
                                                                      onCancel,
                                                                      formatDistance,
-                                                                     formatDuration
+                                                                     formatDuration,
+                                                                     isMuted,
+                                                                     onMuteToggle
                                                                  }) => {
     const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -132,6 +144,25 @@ const NavigationInfoPanel: React.FC<NavigationInfoPanelProps> = ({
                             </Text>
                         </View>
 
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            marginRight: 12
+                        }}>
+                            <Ionicons
+                                name={isMuted ? "volume-mute" : "volume-high"}
+                                size={20}
+                                color="#666"
+                                style={{ marginRight: 8 }}
+                            />
+                            <Switch
+                                value={!isMuted}
+                                onValueChange={() => onMuteToggle()}
+                                trackColor={{ false: "#767577", true: "#4285F4" }}
+                                thumbColor={!isMuted ? "#fff" : "#f4f3f4"}
+                            />
+                        </View>
+
                         <TouchableOpacity
                             onPress={onCancel}
                             style={{
@@ -141,7 +172,6 @@ const NavigationInfoPanel: React.FC<NavigationInfoPanelProps> = ({
                                 backgroundColor: '#f5f5f5',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                marginLeft: 12
                             }}
                         >
                             <Ionicons name="close" size={20} color="#666" />
@@ -169,7 +199,7 @@ const NavigationInfoPanel: React.FC<NavigationInfoPanelProps> = ({
                                     marginLeft: 6,
                                     color: '#4285F4'
                                 }}>
-                                    {formatDuration(progress.remainingDuration || 0)}
+                                    {formatDuration(progress.durationRemaining || 0)}
                                 </Text>
                             </View>
 
@@ -185,7 +215,7 @@ const NavigationInfoPanel: React.FC<NavigationInfoPanelProps> = ({
                                     marginLeft: 6,
                                     color: '#34A853'
                                 }}>
-                                    {formatDistance(progress.remainingDistance || 0)}
+                                    {formatDistance(progress.distanceRemaining || 0)}
                                 </Text>
                             </View>
 
@@ -219,6 +249,13 @@ export default function OSRMDriverNavigationScreen() {
     const mapRef = useRef<NavigationMapboxMapRef>(null);
     const [isMuted, setIsMuted] = useState(false);
     const [showInstructions, setShowInstructions] = useState(true);
+    const lastSpokenInstructionRef = useRef<string>('');
+    const [maneuverPoints, setManeuverPoints] = useState<Array<{
+        coordinate: [number, number];
+        type: string;
+        modifier?: string;
+        instruction: string;
+    }>>([]);
 
     console.log('🚗 OSRM Driver Navigation Screen loaded with params:', params);
 
@@ -281,6 +318,24 @@ export default function OSRMDriverNavigationScreen() {
         );
     }
 
+    // Voice guidance function
+    const speakInstruction = useCallback(async (text: string) => {
+        if (isMuted || !text || text === lastSpokenInstructionRef.current) {
+            return;
+        }
+
+        try {
+            // Stop any ongoing speech
+            await Speech.stop();
+
+            // Speak the new instruction
+            await Speech.speak(text, VOICE_OPTIONS);
+            lastSpokenInstructionRef.current = text;
+        } catch (error) {
+            console.warn('Speech error:', error);
+        }
+    }, [isMuted]);
+
     // Use OSRM navigation hook
     const {
         isNavigating,
@@ -299,7 +354,8 @@ export default function OSRMDriverNavigationScreen() {
         getMapboxCameraConfig,
         formatDistance,
         formatDuration,
-        getManeuverIcon
+        getManeuverIcon,
+        navigationService
     } = useOSRMNavigation({
         origin: {
             latitude: rideData.pickupLat,
@@ -310,6 +366,7 @@ export default function OSRMDriverNavigationScreen() {
             longitude: rideData.destLng
         },
         onDestinationReached: () => {
+            speakInstruction('You have arrived at your destination');
             Alert.alert(
                 'Destination Reached! 🎉',
                 `You've arrived at ${rideData.destAddress}`,
@@ -334,14 +391,36 @@ export default function OSRMDriverNavigationScreen() {
         },
         onNewInstruction: (instruction) => {
             console.log('🗣️ New instruction:', instruction.voiceInstruction);
+            speakInstruction(instruction.voiceInstruction);
         }
     });
+
+    // Extract maneuver points from route
+    useEffect(() => {
+        if (route && route.instructions) {
+            const points = route.instructions
+                .filter(inst => inst.maneuver && inst.maneuver.location)
+                .map(inst => ({
+                    coordinate: [inst.maneuver.location.longitude, inst.maneuver.location.latitude] as [number, number],
+                    type: inst.maneuver.type,
+                    modifier: inst.maneuver.modifier,
+                    instruction: inst.text
+                }));
+            setManeuverPoints(points);
+            console.log('📍 Maneuver points extracted:', points.length);
+        }
+    }, [route]);
 
     // Auto-start navigation when component mounts
     useEffect(() => {
         if (!isNavigating && !isLoading && !error) {
             console.log('🚀 Auto-starting navigation...');
             startNavigation();
+
+            // Initial voice announcement
+            setTimeout(() => {
+                speakInstruction(`Starting navigation to ${rideData.destAddress}`);
+            }, 1000);
         }
     }, []); // Empty dependency array - only run once
 
@@ -376,7 +455,10 @@ export default function OSRMDriverNavigationScreen() {
 
     const handleVolumeToggle = useCallback(() => {
         setIsMuted(!isMuted);
-    }, [isMuted]);
+        if (isMuted) {
+            speakInstruction('Voice guidance enabled');
+        }
+    }, [isMuted, speakInstruction]);
 
     const handleBackPress = useCallback(() => {
         Alert.alert(
@@ -387,8 +469,9 @@ export default function OSRMDriverNavigationScreen() {
                 {
                     text: 'Yes, Cancel',
                     style: 'destructive',
-                    onPress: () => {
+                    onPress: async () => {
                         stopNavigation();
+                        await Speech.stop();
                         router.back();
                     }
                 }
@@ -398,11 +481,11 @@ export default function OSRMDriverNavigationScreen() {
 
     // Calculate ETA
     const calculateETA = useCallback(() => {
-        if (!progress?.remainingDuration) return '-- --';
+        if (!progress?.durationRemaining) return '-- --';
 
         try {
             const now = new Date();
-            const eta = new Date(now.getTime() + progress.remainingDuration * 1000);
+            const eta = new Date(now.getTime() + progress.durationRemaining * 1000);
             return eta.toLocaleTimeString('en-US', {
                 hour: 'numeric',
                 minute: '2-digit',
@@ -413,6 +496,13 @@ export default function OSRMDriverNavigationScreen() {
             return '-- --';
         }
     }, [progress]);
+
+    // Cleanup speech on unmount
+    useEffect(() => {
+        return () => {
+            Speech.stop();
+        };
+    }, []);
 
     // Show loading state
     if (isLoading) {
@@ -534,7 +624,7 @@ export default function OSRMDriverNavigationScreen() {
         <View style={{ flex: 1 }}>
             <Stack.Screen options={{ headerShown: false }} />
 
-            {/* Navigation Map with Route */}
+            {/* Navigation Map with Route and Maneuver Arrows */}
             <NavigationMapboxMap
                 ref={mapRef}
                 driverLocation={currentPosition}
@@ -543,6 +633,7 @@ export default function OSRMDriverNavigationScreen() {
                     longitude: rideData.destLng
                 }}
                 routeGeoJSON={routeGeoJSON}
+                maneuverPoints={maneuverPoints}
                 bearing={currentHeading}
                 pitch={60}
                 zoomLevel={18}
@@ -550,7 +641,7 @@ export default function OSRMDriverNavigationScreen() {
                 showUserLocation={true}
                 enableRotation={false}
                 enablePitching={false}
-                enableScrolling={true} // Allow some scrolling for better UX
+                enableScrolling={true}
                 mapStyle="mapbox://styles/mapbox/navigation-day-v1"
             />
 
@@ -581,8 +672,8 @@ export default function OSRMDriverNavigationScreen() {
             {/* ETA Card */}
             <EtaCard
                 arrivalTime={calculateETA()}
-                timeRemaining={formatDuration(progress?.remainingDuration || 0)}
-                distance={formatDistance(progress?.remainingDistance || 0)}
+                timeRemaining={formatDuration(progress?.durationRemaining || 0)}
+                distance={formatDistance(progress?.distanceRemaining || 0)}
                 isVisible={isNavigating && progress !== null}
             />
 
@@ -591,9 +682,7 @@ export default function OSRMDriverNavigationScreen() {
                 <NavigationInstruction
                     instruction={currentInstruction.text || currentInstruction.voiceInstruction || 'Continue straight'}
                     distance={formatDistance(currentInstruction.distance || 0)}
-                    maneuver={currentInstruction.type === 'turn' ?
-                        (currentInstruction.modifier === 'left' ? 'turn-left' : 'turn-right') :
-                        'straight'}
+                    maneuver={currentInstruction.maneuver?.type || 'straight'}
                     isVisible={showInstructions && isNavigating}
                 />
             )}
@@ -613,7 +702,7 @@ export default function OSRMDriverNavigationScreen() {
                 isVisible={isNavigating}
             />
 
-            {/* Top info panel */}
+            {/* Top info panel with mute control */}
             <NavigationInfoPanel
                 currentInstruction={currentInstruction}
                 nextInstruction={nextInstruction}
@@ -622,6 +711,8 @@ export default function OSRMDriverNavigationScreen() {
                 onCancel={handleBackPress}
                 formatDistance={formatDistance}
                 formatDuration={formatDuration}
+                isMuted={isMuted}
+                onMuteToggle={handleVolumeToggle}
             />
 
             {/* Center crosshair indicator */}
@@ -651,42 +742,6 @@ export default function OSRMDriverNavigationScreen() {
                     backgroundColor: 'white'
                 }} />
             </View>
-
-            {/* Debug info in development */}
-            {__DEV__ && (
-                <View style={{
-                    position: 'absolute',
-                    bottom: 120,
-                    left: 16,
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    padding: 8,
-                    borderRadius: 8,
-                    maxWidth: 200
-                }}>
-                    <Text style={{ color: 'white', fontSize: 10 }}>
-                        Status: {isNavigating ? 'Navigating' : 'Stopped'}
-                    </Text>
-                    <Text style={{ color: 'white', fontSize: 10 }}>
-                        Route: {route ? 'Loaded' : 'None'}
-                    </Text>
-                    <Text style={{ color: 'white', fontSize: 10 }}>
-                        Position: {currentPosition ? 'Active' : 'None'}
-                    </Text>
-                    <Text style={{ color: 'white', fontSize: 10 }}>
-                        Heading: {Math.round(currentHeading)}°
-                    </Text>
-                    {progress && (
-                        <>
-                            <Text style={{ color: 'white', fontSize: 10 }}>
-                                Distance: {formatDistance(progress.remainingDistance || 0)}
-                            </Text>
-                            <Text style={{ color: 'white', fontSize: 10 }}>
-                                ETA: {formatDuration(progress.remainingDuration || 0)}
-                            </Text>
-                        </>
-                    )}
-                </View>
-            )}
         </View>
     );
 }
