@@ -45,14 +45,54 @@ export const useDriverNavigation = ({
     const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<number | null>(null);
     const [distanceRemaining, setDistanceRemaining] = useState<number | null>(null);
 
-    const { location: driverLocation, getCurrentLocation } = useLocation({ autoStart: true });
+    const { location: driverLocation, getCurrentLocation, requestPermission, hasPermission } = useLocation({ autoStart: true });
+
+    console.log('🚗 Driver navigation hook initialized:', {
+        rideId: rideData.id,
+        pickupCoords: { lat: rideData.pickupLat, lng: rideData.pickupLng },
+        destCoords: { lat: rideData.destLat, lng: rideData.destLng },
+        currentDestination,
+        hasLocation: !!driverLocation,
+        hasPermission,
+        isNavigationActive,
+        navigationPhase
+    });
 
     // Initialize navigation when driver location is available
     useEffect(() => {
-        if (driverLocation && !isNavigationActive) {
-            startNavigation();
-        }
-    }, [driverLocation]);
+        const initializeNavigation = async () => {
+            console.log('🔄 Initializing navigation...', {
+                hasLocation: !!driverLocation,
+                hasPermission,
+                isNavigationActive
+            });
+
+            if (!hasPermission) {
+                console.log('📍 Requesting location permission...');
+                const granted = await requestPermission();
+                if (!granted) {
+                    console.error('❌ Location permission denied');
+                    onNavigationError?.(new Error('Location permission is required for navigation'));
+                    return;
+                }
+            }
+
+            if (driverLocation && !isNavigationActive) {
+                console.log('✅ Starting navigation with driver location:', driverLocation.coords);
+                startNavigation();
+            } else if (!driverLocation) {
+                console.log('📍 Getting current location...');
+                try {
+                    await getCurrentLocation();
+                } catch (error) {
+                    console.error('❌ Failed to get current location:', error);
+                    onNavigationError?.(error as Error);
+                }
+            }
+        };
+
+        initializeNavigation();
+    }, [driverLocation, hasPermission, isNavigationActive]);
 
     const startNavigation = useCallback(() => {
         setIsNavigationActive(true);
@@ -145,18 +185,18 @@ export const useDriverNavigation = ({
     const getPhaseInstruction = useCallback(() => {
         switch (navigationPhase) {
             case 'TO_PICKUP':
-                return `Pick up ${rideData.passengerName} at ${rideData.pickupAddress}`;
+                return `Pick up ${rideData.passengerName || 'passenger'} at ${rideData.pickupAddress || 'pickup location'}`;
             case 'TO_DESTINATION':
-                return `Drop off at ${rideData.destAddress}`;
+                return `Drop off at ${rideData.destAddress || 'destination'}`;
             case 'COMPLETED':
                 return 'Trip completed successfully!';
             default:
-                return '';
+                return 'Please wait...';
         }
     }, [navigationPhase, rideData]);
 
     const formatTimeRemaining = useCallback((seconds: number | null): string => {
-        if (!seconds) return '--';
+        if (!seconds || typeof seconds !== 'number' || isNaN(seconds)) return '--';
 
         const minutes = Math.floor(seconds / 60);
         const remainingSeconds = Math.floor(seconds % 60);
@@ -168,7 +208,7 @@ export const useDriverNavigation = ({
     }, []);
 
     const formatDistanceRemaining = useCallback((meters: number | null): string => {
-        if (!meters) return '--';
+        if (!meters || typeof meters !== 'number' || isNaN(meters)) return '--';
 
         if (meters >= 1000) {
             return `${(meters / 1000).toFixed(1)}km`;
