@@ -222,30 +222,6 @@ export default function DriverNavigationScreen() {
                                 console.log('✅ Routes loaded successfully');
                             }}
                         />
-
-                        {/* Debug info in development */}
-                        {__DEV__ && hasValidCoordinates && (
-                            <View className="absolute top-4 right-4 bg-black bg-opacity-75 rounded-lg p-2 max-w-xs">
-                                <Text className="text-white text-xs font-bold mb-1">
-                                    Navigation Debug
-                                </Text>
-                                <Text className="text-white text-xs">
-                                    Phase: {navigationPhase || 'Unknown'}
-                                </Text>
-                                <Text className="text-white text-xs">
-                                    Driver: {driverLat.toFixed(6)}, {driverLng.toFixed(6)}
-                                </Text>
-                                <Text className="text-white text-xs">
-                                    Target: {destLat.toFixed(6)}, {destLng.toFixed(6)}
-                                </Text>
-                                <Text className="text-white text-xs">
-                                    {currentDestination.name || 'Unknown'}
-                                </Text>
-                                <Text className="text-white text-xs">
-                                    Active: {isNavigationActive ? 'Yes' : 'No'}
-                                </Text>
-                            </View>
-                        )}
                     </View>
                 ) : (
                     <View className="flex-1 justify-center items-center bg-gray-100">
@@ -259,16 +235,6 @@ export default function DriverNavigationScreen() {
                                     <Text className="text-gray-600 text-center mb-4">
                                         The navigation coordinates are invalid. Please check the ride data.
                                     </Text>
-                                    {__DEV__ && (
-                                        <View className="mt-2 p-2 bg-gray-100 rounded w-full">
-                                            <Text className="text-xs text-gray-600 text-center">
-                                                Driver: {driverLat}, {driverLng}
-                                            </Text>
-                                            <Text className="text-xs text-gray-600 text-center">
-                                                Dest: {destLat}, {destLng}
-                                            </Text>
-                                        </View>
-                                    )}
                                 </>
                             ) : (
                                 <>
