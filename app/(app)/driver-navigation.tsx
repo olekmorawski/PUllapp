@@ -1,12 +1,15 @@
 // app/(app)/driver-navigation.tsx - Fixed infinite loop and improved error handling
 import React, { useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Alert, SafeAreaView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import { MapboxNavigationMap } from '@/components/DriverNavigation';
 import { useOSRMNavigation } from '@/hooks/useOSRMNavigation';
 import { NavigationCoordinates, NavigationInstruction } from '@/services/OSRMNavigationService';
+import {useDriverNavigation} from "@/hooks/useDriverNavigation";
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 
 // Fixed interface with index signature for dynamic access
 interface RideParams {
@@ -284,7 +287,7 @@ export default function DriverNavigationScreen(): React.JSX.Element | null {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView className="flex-1 " edges={['right', 'top', 'left', 'bottom']}>
             <Stack.Screen options={{ headerShown: false }} />
 
             {/* Mapbox Navigation Map */}

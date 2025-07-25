@@ -7,6 +7,7 @@ import {
     NavigationProgress,
     NavigationInstruction
 } from '@/services/OSRMNavigationService';
+import {Feature} from "geojson";
 import * as Location from 'expo-location';
 
 interface UseOSRMNavigationProps {
@@ -45,7 +46,7 @@ export interface UseOSRMNavigationReturn {
 
     // Utilities for Mapbox
     getMapboxCameraConfig: () => MapboxCameraConfig | null;
-    getRouteGeoJSON: () => GeoJSON.Feature | null;
+    getRouteGeoJSON: () => Feature | null;
     formatDistance: (meters: number) => string;
     formatDuration: (seconds: number) => string;
     getManeuverIcon: (type: string, modifier?: string) => string;
