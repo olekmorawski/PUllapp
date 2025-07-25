@@ -221,10 +221,10 @@ export const useOSRMNavigation = ({
             centerCoordinate: [position.longitude, position.latitude],
             zoomLevel: 18, // Close zoom for navigation
             pitch: 60, // 3D perspective
-            heading: currentHeading, // Rotate based on driver direction
+            heading: 0,
             animationDuration: 1000,
         };
-    }, [currentPosition, currentHeading, origin]);
+    }, [currentPosition, origin]);
 
     // Convert route to GeoJSON for Mapbox
     const getRouteGeoJSON = useCallback((): GeoJSON.Feature | null => {

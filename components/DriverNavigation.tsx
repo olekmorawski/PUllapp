@@ -91,7 +91,11 @@ export const MapboxNavigationMap: React.FC<MapboxNavigationProps> = ({
                 scrollEnabled={true}
                 zoomEnabled={true}
             >
-                <Mapbox.Camera ref={cameraRef as React.Ref<Mapbox.Camera>} />
+                <Mapbox.Camera
+                    ref={cameraRef as React.Ref<Mapbox.Camera>}
+                    followUserLocation
+                    followUserMode="course"
+                />
 
                 {/* User location */}
                 {showUserLocation && (
