@@ -1,149 +1,287 @@
-// app/(app)/driver-navigation.tsx - Fixed infinite loop and improved error handling
-import React, { useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Alert, SafeAreaView, StyleSheet } from 'react-native';
+// app/(app)/driver-navigation.tsx - Fixed with OSRM integration
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { View, Text, TouchableOpacity, Alert, SafeAreaView, Dimensions, Animated, ViewStyle } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Mapbox from '@rnmapbox/maps';
-import { MapboxNavigationMap } from '@/components/DriverNavigation';
 import { useOSRMNavigation } from '@/hooks/useOSRMNavigation';
-import { NavigationCoordinates, NavigationInstruction } from '@/services/OSRMNavigationService';
+import { RideNavigationData } from '@/hooks/useEnhancedDriverNavigation';
+import NavigationMapboxMap, { NavigationMapboxMapRef } from '@/components/NavigationMapboxMap';
+import {
+    NavigationCompass,
+    SpeedIndicator,
+    EtaCard,
+    NavigationInstruction,
+    NavigationControls,
+    NavigationStatusBar
+} from '@/components/NavigationUIComponents';
 
-// Fixed interface with index signature for dynamic access
-interface RideParams {
-    rideId: string;
-    pickupLat: string;
-    pickupLng: string;
-    pickupAddress: string;
-    destLat: string;
-    destLng: string;
-    destAddress: string;
-    passengerName: string;
-    estimatedPrice: string;
-    // Add index signature to allow dynamic string access
-    [key: string]: string | undefined;
-}
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-interface ParsedRideData {
-    id: string;
-    pickup: NavigationCoordinates;
-    destination: NavigationCoordinates;
-    pickupAddress: string;
-    destAddress: string;
-    passengerName: string;
-    estimatedPrice: string;
-}
-
-export default function DriverNavigationScreen(): React.JSX.Element | null {
-    const router = useRouter();
-    const rawParams = useLocalSearchParams();
-    const mapRef = useRef<Mapbox.MapView>(null);
-    const cameraRef = useRef<Mapbox.Camera>(null);
-    const hasStartedNavigation = useRef<boolean>(false);
-
-    // Type assertion to our expected params structure
-    const params = rawParams as unknown as RideParams;
-
-    console.log('🚗 Driver Navigation Screen loaded with params:', params);
-
-    // Validate required params with proper typing
-    const requiredParams: (keyof RideParams)[] = ['rideId', 'pickupLat', 'pickupLng', 'destLat', 'destLng'];
-    const missingParams = requiredParams.filter(param => {
-        const value = params[param];
-        return !value || (typeof value === 'string' && value.trim() === '');
-    });
-
-    if (missingParams.length > 0) {
-        console.error('❌ Missing required navigation params:', missingParams);
-        Alert.alert(
-            'Navigation Error',
-            'Missing ride information. Returning to driver dashboard.',
-            [{ text: 'OK', onPress: () => router.replace('/(app)') }]
-        );
+// Safe parameter validation
+const validateParams = (params: any): RideNavigationData | null => {
+    if (!params || typeof params !== 'object') {
+        console.error('❌ Params is not an object:', params);
         return null;
     }
 
-    // Parse and validate coordinates with better error handling
-    const parseCoordinate = (value: string | string[] | undefined, name: string): number => {
-        if (!value) {
-            throw new Error(`Missing ${name}`);
+    const requiredFields = [
+        'rideId', 'pickupLat', 'pickupLng', 'destLat', 'destLng',
+        'pickupAddress', 'destAddress', 'passengerName', 'estimatedPrice'
+    ];
+
+    for (const field of requiredFields) {
+        if (!(field in params) || params[field] === undefined || params[field] === null) {
+            console.error(`❌ Missing required field: ${field}`, params);
+            return null;
         }
-
-        const stringValue = Array.isArray(value) ? value[0] : value;
-
-        if (!stringValue || stringValue.trim() === '') {
-            throw new Error(`Empty ${name}`);
-        }
-
-        const parsed = parseFloat(stringValue);
-        if (isNaN(parsed)) {
-            throw new Error(`Invalid ${name}: ${stringValue}`);
-        }
-        return parsed;
-    };
-
-    const isValidCoordinate = (lat: number, lng: number): boolean => {
-        return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
-    };
-
-    let rideData: ParsedRideData;
+    }
 
     try {
-        const pickupLat = parseCoordinate(params.pickupLat, 'pickup latitude');
-        const pickupLng = parseCoordinate(params.pickupLng, 'pickup longitude');
-        const destLat = parseCoordinate(params.destLat, 'destination latitude');
-        const destLng = parseCoordinate(params.destLng, 'destination longitude');
-
-        if (!isValidCoordinate(pickupLat, pickupLng) || !isValidCoordinate(destLat, destLng)) {
-            throw new Error('Coordinates out of valid range');
-        }
-
-        const getStringParam = (value: string | string[] | undefined, fallback: string): string => {
-            if (!value) return fallback;
-            return Array.isArray(value) ? (value[0] || fallback) : value;
-        };
-
-        rideData = {
-            id: getStringParam(params.rideId, 'unknown'),
-            pickup: { latitude: pickupLat, longitude: pickupLng },
-            destination: { latitude: destLat, longitude: destLng },
-            pickupAddress: getStringParam(params.pickupAddress, 'Pickup Location'),
-            destAddress: getStringParam(params.destAddress, 'Destination'),
-            passengerName: getStringParam(params.passengerName, 'Passenger'),
-            estimatedPrice: getStringParam(params.estimatedPrice, '$0.00'),
+        return {
+            id: String(params.rideId),
+            pickupLat: parseFloat(params.pickupLat as string),
+            pickupLng: parseFloat(params.pickupLng as string),
+            pickupAddress: String(params.pickupAddress),
+            destLat: parseFloat(params.destLat as string),
+            destLng: parseFloat(params.destLng as string),
+            destAddress: String(params.destAddress),
+            passengerName: String(params.passengerName),
+            estimatedPrice: String(params.estimatedPrice),
         };
     } catch (error) {
-        Alert.alert(
-            'Invalid Coordinates',
-            `The ride coordinates are invalid: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            [{ text: 'OK', onPress: () => router.back() }]
-        );
+        console.error('❌ Error creating ride data:', error);
         return null;
     }
+};
 
-    const {
-        navigationPhase,
-        isNavigationActive,
-        currentDestination,
-        driverLocation,
-        handleArrivedAtPickup,
-        handleArrivedAtDestination,
-        isAtPickupPhase,
-    } = useDriverNavigation({
-        rideData: {
-            ...rideData,
-            pickupLat: rideData.pickup.latitude,
-            pickupLng: rideData.pickup.longitude,
-            destLat: rideData.destination.latitude,
-            destLng: rideData.destination.longitude,
-        },
-        onNavigationComplete: () => router.replace('/(app)'),
-    });
+interface NavigationInfoPanelProps {
+    currentInstruction: any;
+    nextInstruction: any;
+    progress: any;
+    rideData: RideNavigationData;
+    onCancel: () => void;
+    formatDistance: (meters: number) => string;
+    formatDuration: (seconds: number) => string;
+}
 
-    const navigationOrigin = driverLocation ? {
-        latitude: driverLocation.coords.latitude,
-        longitude: driverLocation.coords.longitude
-    } : rideData.pickup;
+const NavigationInfoPanel: React.FC<NavigationInfoPanelProps> = ({
+                                                                     currentInstruction,
+                                                                     nextInstruction,
+                                                                     progress,
+                                                                     rideData,
+                                                                     onCancel,
+                                                                     formatDistance,
+                                                                     formatDuration
+                                                                 }) => {
+    const slideAnim = useRef(new Animated.Value(0)).current;
 
+    useEffect(() => {
+        Animated.timing(slideAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+        }).start();
+    }, [slideAnim]);
+
+    return (
+        <Animated.View style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            transform: [{
+                translateY: slideAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-100, 0],
+                })
+            }]
+        }}>
+            <SafeAreaView>
+                <View style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    marginHorizontal: 16,
+                    marginTop: 8,
+                    borderRadius: 16,
+                    padding: 16,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 8,
+                    elevation: 5,
+                }}>
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                    }}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{
+                                fontSize: 18,
+                                fontWeight: '700',
+                                color: '#1a1a1a',
+                                marginBottom: 4
+                            }}>
+                                Navigation Active
+                            </Text>
+                            <Text style={{
+                                fontSize: 14,
+                                color: '#666',
+                                lineHeight: 20
+                            }} numberOfLines={2}>
+                                {currentInstruction?.text || `Navigating to ${rideData.destAddress}`}
+                            </Text>
+                        </View>
+
+                        <TouchableOpacity
+                            onPress={onCancel}
+                            style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 18,
+                                backgroundColor: '#f5f5f5',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginLeft: 12
+                            }}
+                        >
+                            <Ionicons name="close" size={20} color="#666" />
+                        </TouchableOpacity>
+                    </View>
+
+                    {progress && (
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            marginTop: 12,
+                            paddingTop: 12,
+                            borderTopWidth: 1,
+                            borderTopColor: '#f0f0f0'
+                        }}>
+                            <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                flex: 1
+                            }}>
+                                <Ionicons name="time" size={16} color="#4285F4" />
+                                <Text style={{
+                                    fontSize: 16,
+                                    fontWeight: '600',
+                                    marginLeft: 6,
+                                    color: '#4285F4'
+                                }}>
+                                    {formatDuration(progress.remainingDuration || 0)}
+                                </Text>
+                            </View>
+
+                            <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                flex: 1
+                            }}>
+                                <Ionicons name="navigate" size={16} color="#34A853" />
+                                <Text style={{
+                                    fontSize: 16,
+                                    fontWeight: '600',
+                                    marginLeft: 6,
+                                    color: '#34A853'
+                                }}>
+                                    {formatDistance(progress.remainingDistance || 0)}
+                                </Text>
+                            </View>
+
+                            <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                flex: 1,
+                                justifyContent: 'flex-end'
+                            }}>
+                                <Ionicons name="cash" size={16} color="#FBBC04" />
+                                <Text style={{
+                                    fontSize: 16,
+                                    fontWeight: '600',
+                                    marginLeft: 6,
+                                    color: '#FBBC04'
+                                }}>
+                                    {rideData.estimatedPrice}
+                                </Text>
+                            </View>
+                        </View>
+                    )}
+                </View>
+            </SafeAreaView>
+        </Animated.View>
+    );
+};
+
+export default function OSRMDriverNavigationScreen() {
+    const router = useRouter();
+    const params = useLocalSearchParams();
+    const mapRef = useRef<NavigationMapboxMapRef>(null);
+    const [isMuted, setIsMuted] = useState(false);
+    const [showInstructions, setShowInstructions] = useState(true);
+
+    console.log('🚗 OSRM Driver Navigation Screen loaded with params:', params);
+
+    // Validate and extract ride data from params
+    const rideData = validateParams(params);
+
+    if (!rideData) {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{
+                        backgroundColor: 'white',
+                        borderRadius: 20,
+                        padding: 32,
+                        marginHorizontal: 32,
+                        alignItems: 'center',
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 12,
+                        elevation: 8
+                    }}>
+                        <Ionicons name="warning" size={48} color="#EA4335" />
+                        <Text style={{
+                            fontSize: 20,
+                            fontWeight: '600',
+                            color: '#1a1a1a',
+                            marginTop: 16,
+                            marginBottom: 8,
+                            textAlign: 'center'
+                        }}>
+                            Invalid Navigation Data
+                        </Text>
+                        <Text style={{
+                            fontSize: 16,
+                            color: '#666',
+                            textAlign: 'center',
+                            lineHeight: 22,
+                            marginBottom: 24
+                        }}>
+                            The ride information is missing or invalid. Please try again.
+                        </Text>
+                        <TouchableOpacity
+                            onPress={() => router.replace('/(app)')}
+                            style={{
+                                backgroundColor: '#4285F4',
+                                borderRadius: 12,
+                                paddingHorizontal: 24,
+                                paddingVertical: 12
+                            }}
+                        >
+                            <Text style={{ color: 'white', fontWeight: '600' }}>
+                                Back to Dashboard
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    // Use OSRM navigation hook
     const {
         isNavigating,
         isLoading,
@@ -154,128 +292,234 @@ export default function DriverNavigationScreen(): React.JSX.Element | null {
         currentInstruction,
         nextInstruction,
         error,
-        retryCount,
         startNavigation,
         stopNavigation,
         retryNavigation,
-        getMapboxCameraConfig,
         getRouteGeoJSON,
+        getMapboxCameraConfig,
         formatDistance,
         formatDuration,
-        getManeuverIcon,
+        getManeuverIcon
     } = useOSRMNavigation({
-        origin: navigationOrigin,
-        destination: currentDestination,
+        origin: {
+            latitude: rideData.pickupLat,
+            longitude: rideData.pickupLng
+        },
+        destination: {
+            latitude: rideData.destLat,
+            longitude: rideData.destLng
+        },
         onDestinationReached: () => {
-            if (isAtPickupPhase) {
-                handleArrivedAtPickup();
-            } else {
-                handleArrivedAtDestination();
-            }
+            Alert.alert(
+                'Destination Reached! 🎉',
+                `You've arrived at ${rideData.destAddress}`,
+                [
+                    {
+                        text: 'Complete Trip',
+                        onPress: () => router.replace('/(app)')
+                    }
+                ]
+            );
         },
-        onNavigationError: (error: Error) => {
-            if (retryCount >= 2) {
-                Alert.alert(
-                    'Navigation Error',
-                    `${error.message}. Please check your connection.`,
-                    [
-                        { text: 'Go Back', onPress: () => router.back() },
-                        { text: 'Retry', onPress: retryNavigation }
-                    ]
-                );
-            }
+        onNavigationError: (error) => {
+            console.error('🚨 Navigation error:', error);
+            Alert.alert(
+                'Navigation Error',
+                error.message,
+                [
+                    { text: 'Retry', onPress: retryNavigation },
+                    { text: 'Cancel', onPress: () => router.back() }
+                ]
+            );
         },
+        onNewInstruction: (instruction) => {
+            console.log('🗣️ New instruction:', instruction.voiceInstruction);
+        }
     });
 
+    // Auto-start navigation when component mounts
     useEffect(() => {
-        if (isNavigationActive && !isNavigating && !isLoading && !error) {
+        if (!isNavigating && !isLoading && !error) {
+            console.log('🚀 Auto-starting navigation...');
             startNavigation();
         }
-    }, [isNavigationActive, isNavigating, isLoading, error, startNavigation]);
+    }, []); // Empty dependency array - only run once
 
-    const handleStopNavigation = (): void => {
+    // Update map camera when position changes
+    useEffect(() => {
+        if (currentPosition && mapRef.current) {
+            console.log('📍 Updating camera to follow driver at:', currentPosition);
+
+            // Get camera config from OSRM hook
+            const cameraConfig = getMapboxCameraConfig();
+            if (cameraConfig) {
+                mapRef.current.flyTo(
+                    cameraConfig.centerCoordinate,
+                    cameraConfig.zoomLevel,
+                    cameraConfig.heading
+                );
+            }
+        }
+    }, [currentPosition, currentHeading, getMapboxCameraConfig]);
+
+    // Navigation control handlers
+    const handleRecenter = useCallback(() => {
+        if (currentPosition && mapRef.current) {
+            console.log('🎯 Recentering map on driver');
+            mapRef.current.flyTo(
+                [currentPosition.longitude, currentPosition.latitude],
+                18,
+                currentHeading
+            );
+        }
+    }, [currentPosition, currentHeading]);
+
+    const handleVolumeToggle = useCallback(() => {
+        setIsMuted(!isMuted);
+    }, [isMuted]);
+
+    const handleBackPress = useCallback(() => {
         Alert.alert(
             'Cancel Navigation',
-            'Are you sure you want to cancel this trip? This may affect your driver rating.',
+            'Are you sure you want to cancel this navigation?',
             [
-                { text: 'Continue Trip', style: 'cancel' },
+                { text: 'No', style: 'cancel' },
                 {
-                    text: 'Cancel Trip',
+                    text: 'Yes, Cancel',
                     style: 'destructive',
                     onPress: () => {
                         stopNavigation();
-                        router.replace('/(app)');
+                        router.back();
                     }
                 }
             ]
         );
-    };
+    }, [stopNavigation, router]);
 
-    const handleRecenterCamera = (): void => {
-        const cameraConfig = getMapboxCameraConfig();
-        if (cameraRef.current) {
-            if (cameraConfig) {
-                cameraRef.current.setCamera({
-                    centerCoordinate: cameraConfig.centerCoordinate,
-                    zoomLevel: cameraConfig.zoomLevel,
-                    pitch: cameraConfig.pitch,
-                    heading: cameraConfig.heading,
-                    animationMode: 'easeTo',
-                    animationDuration: 500,
-                });
-            } else if (driverLocation) {
-                cameraRef.current.setCamera({
-                    centerCoordinate: [driverLocation.coords.longitude, driverLocation.coords.latitude],
-                    zoomLevel: 18,
-                    pitch: 60,
-                    heading: driverLocation.coords.heading || 0,
-                    animationMode: 'easeTo',
-                    animationDuration: 500,
-                });
-            }
+    // Calculate ETA
+    const calculateETA = useCallback(() => {
+        if (!progress?.remainingDuration) return '-- --';
+
+        try {
+            const now = new Date();
+            const eta = new Date(now.getTime() + progress.remainingDuration * 1000);
+            return eta.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        } catch (error) {
+            console.warn('Error calculating ETA:', error);
+            return '-- --';
         }
-    };
+    }, [progress]);
 
-    const handleCallPassenger = (): void => {
-        Alert.alert(
-            'Call Passenger',
-            `Do you want to call ${rideData.passengerName}?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Call', onPress: () => console.log('Calling passenger...') }
-            ]
-        );
-    };
-
-    const handleRetry = (): void => {
-        hasStartedNavigation.current = false;
-        retryNavigation();
-    };
-
-    // Error state with retry option
-    if (error && retryCount >= 3) {
+    // Show loading state
+    if (isLoading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
                 <Stack.Screen options={{ headerShown: false }} />
-                <View style={styles.errorContainer}>
-                    <Ionicons name="warning-outline" size={48} color="#F59E0B" />
-                    <Text style={styles.errorTitle}>Navigation Error</Text>
-                    <Text style={styles.errorMessage}>
-                        {error.message}
-                        {'\n\n'}Please check your internet connection and try again.
-                    </Text>
-                    <View style={styles.errorButtonContainer}>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{
+                        backgroundColor: 'white',
+                        borderRadius: 20,
+                        padding: 32,
+                        marginHorizontal: 32,
+                        alignItems: 'center',
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 12,
+                        elevation: 8
+                    }}>
+                        <Ionicons name="navigate" size={48} color="#4285F4" />
+                        <Text style={{
+                            fontSize: 20,
+                            fontWeight: '600',
+                            color: '#1a1a1a',
+                            marginTop: 16,
+                            marginBottom: 8
+                        }}>
+                            Starting Navigation...
+                        </Text>
+                        <Text style={{
+                            fontSize: 16,
+                            color: '#666',
+                            textAlign: 'center',
+                            lineHeight: 22
+                        }}>
+                            Calculating the best route to your destination
+                        </Text>
+                    </View>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    // Show error state
+    if (error) {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{
+                        backgroundColor: 'white',
+                        borderRadius: 20,
+                        padding: 32,
+                        marginHorizontal: 32,
+                        alignItems: 'center',
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 12,
+                        elevation: 8
+                    }}>
+                        <Ionicons name="warning" size={48} color="#EA4335" />
+                        <Text style={{
+                            fontSize: 20,
+                            fontWeight: '600',
+                            color: '#1a1a1a',
+                            marginTop: 16,
+                            marginBottom: 8,
+                            textAlign: 'center'
+                        }}>
+                            Navigation Error
+                        </Text>
+                        <Text style={{
+                            fontSize: 16,
+                            color: '#666',
+                            textAlign: 'center',
+                            lineHeight: 22,
+                            marginBottom: 24
+                        }}>
+                            {error.message}
+                        </Text>
                         <TouchableOpacity
-                            onPress={() => router.back()}
-                            style={[styles.errorButton, styles.secondaryButton]}
+                            onPress={retryNavigation}
+                            style={{
+                                backgroundColor: '#4285F4',
+                                borderRadius: 12,
+                                paddingHorizontal: 24,
+                                paddingVertical: 12,
+                                marginBottom: 12
+                            }}
                         >
-                            <Text style={styles.secondaryButtonText}>Go Back</Text>
+                            <Text style={{ color: 'white', fontWeight: '600' }}>
+                                Try Again
+                            </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            onPress={handleRetry}
-                            style={styles.errorButton}
+                            onPress={() => router.back()}
+                            style={{
+                                backgroundColor: '#f5f5f5',
+                                borderRadius: 12,
+                                paddingHorizontal: 24,
+                                paddingVertical: 12
+                            }}
                         >
-                            <Text style={styles.errorButtonText}>Retry</Text>
+                            <Text style={{ color: '#666', fontWeight: '500' }}>
+                                Go Back
+                            </Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -283,432 +527,166 @@ export default function DriverNavigationScreen(): React.JSX.Element | null {
         );
     }
 
+    // Get route GeoJSON for display
+    const routeGeoJSON = getRouteGeoJSON();
+
     return (
-        <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1 }}>
             <Stack.Screen options={{ headerShown: false }} />
 
-            {/* Mapbox Navigation Map */}
-            <MapboxNavigationMap
-                mapRef={mapRef}
-                cameraRef={cameraRef}
-                initialRegion={{
-                    latitude: rideData.pickup.latitude,
-                    longitude: rideData.pickup.longitude,
-                    latitudeDelta: 0.01,
-                    longitudeDelta: 0.01,
+            {/* Navigation Map with Route */}
+            <NavigationMapboxMap
+                ref={mapRef}
+                driverLocation={currentPosition}
+                destination={{
+                    latitude: rideData.destLat,
+                    longitude: rideData.destLng
                 }}
-                routeGeoJSON={getRouteGeoJSON()}
-                currentPosition={currentPosition}
-                currentHeading={currentHeading}
-                destination={currentDestination}
-                cameraConfig={getMapboxCameraConfig()}
+                routeGeoJSON={routeGeoJSON}
+                bearing={currentHeading}
+                pitch={60}
+                zoomLevel={18}
+                followMode="course"
                 showUserLocation={true}
-                style={styles.map}
+                enableRotation={false}
+                enablePitching={false}
+                enableScrolling={true} // Allow some scrolling for better UX
+                mapStyle="mapbox://styles/mapbox/navigation-day-v1"
             />
 
-            {/* Loading overlay */}
-            {isLoading && (
-                <View style={styles.loadingOverlay}>
-                    <Text style={styles.loadingText}>
-                        {retryCount > 0 ? `Retrying... (${retryCount}/3)` : 'Calculating route...'}
+            {/* Navigation Status Bar */}
+            <NavigationStatusBar
+                connectionStatus="connected"
+                gpsAccuracy="high"
+                batteryLevel={85}
+                isVisible={true}
+            />
+
+            {/* Navigation Compass */}
+            <NavigationCompass
+                bearing={currentHeading}
+                isVisible={isNavigating}
+                onPress={handleRecenter}
+            />
+
+            {/* Speed Indicator */}
+            {currentPosition && (
+                <SpeedIndicator
+                    speed={currentPosition.speed ? currentPosition.speed * 3.6 : 0} // Convert m/s to km/h
+                    speedLimit={50}
+                    isVisible={isNavigating && (currentPosition.speed || 0) > 0.5}
+                />
+            )}
+
+            {/* ETA Card */}
+            <EtaCard
+                arrivalTime={calculateETA()}
+                timeRemaining={formatDuration(progress?.remainingDuration || 0)}
+                distance={formatDistance(progress?.remainingDistance || 0)}
+                isVisible={isNavigating && progress !== null}
+            />
+
+            {/* Navigation Instructions */}
+            {currentInstruction && (
+                <NavigationInstruction
+                    instruction={currentInstruction.text || currentInstruction.voiceInstruction || 'Continue straight'}
+                    distance={formatDistance(currentInstruction.distance || 0)}
+                    maneuver={currentInstruction.type === 'turn' ?
+                        (currentInstruction.modifier === 'left' ? 'turn-left' : 'turn-right') :
+                        'straight'}
+                    isVisible={showInstructions && isNavigating}
+                />
+            )}
+
+            {/* Navigation Controls */}
+            <NavigationControls
+                onRecenter={handleRecenter}
+                onVolumeToggle={handleVolumeToggle}
+                onRouteOptions={() => {
+                    Alert.alert(
+                        'Route Options',
+                        'Navigation in progress',
+                        [{ text: 'OK' }]
+                    );
+                }}
+                isMuted={isMuted}
+                isVisible={isNavigating}
+            />
+
+            {/* Top info panel */}
+            <NavigationInfoPanel
+                currentInstruction={currentInstruction}
+                nextInstruction={nextInstruction}
+                progress={progress}
+                rideData={rideData}
+                onCancel={handleBackPress}
+                formatDistance={formatDistance}
+                formatDuration={formatDuration}
+            />
+
+            {/* Center crosshair indicator */}
+            <View style={{
+                position: 'absolute',
+                top: SCREEN_HEIGHT / 2 - 12,
+                left: SCREEN_WIDTH / 2 - 12,
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: 'rgba(66, 133, 244, 0.9)',
+                borderWidth: 3,
+                borderColor: 'white',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.3,
+                shadowRadius: 4,
+                elevation: 5,
+                pointerEvents: 'none',
+                alignItems: 'center',
+                justifyContent: 'center'
+            }}>
+                <View style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: 'white'
+                }} />
+            </View>
+
+            {/* Debug info in development */}
+            {__DEV__ && (
+                <View style={{
+                    position: 'absolute',
+                    bottom: 120,
+                    left: 16,
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 8,
+                    borderRadius: 8,
+                    maxWidth: 200
+                }}>
+                    <Text style={{ color: 'white', fontSize: 10 }}>
+                        Status: {isNavigating ? 'Navigating' : 'Stopped'}
                     </Text>
-                </View>
-            )}
-
-            {/* Error overlay for retryable errors */}
-            {error && retryCount < 3 && (
-                <View style={styles.errorOverlay}>
-                    <View style={styles.errorCard}>
-                        <Ionicons name="warning-outline" size={24} color="#F59E0B" />
-                        <Text style={styles.errorCardText}>Connection issue - retrying...</Text>
-                    </View>
-                </View>
-            )}
-
-            {/* Navigation instructions overlay */}
-            {isNavigating && (
-                <View style={styles.navigationOverlay}>
-                    {/* Progress bar */}
+                    <Text style={{ color: 'white', fontSize: 10 }}>
+                        Route: {route ? 'Loaded' : 'None'}
+                    </Text>
+                    <Text style={{ color: 'white', fontSize: 10 }}>
+                        Position: {currentPosition ? 'Active' : 'None'}
+                    </Text>
+                    <Text style={{ color: 'white', fontSize: 10 }}>
+                        Heading: {Math.round(currentHeading)}°
+                    </Text>
                     {progress && (
-                        <View style={styles.progressContainer}>
-                            <View style={styles.progressBar}>
-                                <View
-                                    style={[
-                                        styles.progressFill,
-                                        { width: `${Math.min(progress.fractionTraveled * 100, 100)}%` }
-                                    ]}
-                                />
-                            </View>
-                            <Text style={styles.progressText}>
-                                {formatDistance(progress.distanceRemaining)} • {formatDuration(progress.durationRemaining)}
+                        <>
+                            <Text style={{ color: 'white', fontSize: 10 }}>
+                                Distance: {formatDistance(progress.remainingDistance || 0)}
                             </Text>
-                        </View>
-                    )}
-
-                    {/* Current instruction */}
-                    {currentInstruction && (
-                        <View style={styles.instructionPanel}>
-                            <View style={styles.instructionMain}>
-                                <View style={styles.maneuverIcon}>
-                                    <Ionicons
-                                        name={getManeuverIcon(currentInstruction.maneuver.type, currentInstruction.maneuver.modifier) as any}
-                                        size={30}
-                                        color="white"
-                                    />
-                                </View>
-                                <View style={styles.instructionText}>
-                                    <Text style={styles.instructionTitle}>
-                                        {currentInstruction.text}
-                                    </Text>
-                                    <Text style={styles.instructionDistance}>
-                                        in {formatDistance(currentInstruction.distance)}
-                                    </Text>
-                                </View>
-                            </View>
-
-                            {/* Next instruction preview */}
-                            {nextInstruction && (
-                                <View style={styles.nextInstructionPreview}>
-                                    <Ionicons
-                                        name={getManeuverIcon(nextInstruction.maneuver.type, nextInstruction.maneuver.modifier) as any}
-                                        size={16}
-                                        color="#666"
-                                    />
-                                    <Text style={styles.nextInstructionText}>
-                                        Then {nextInstruction.text.toLowerCase()}
-                                    </Text>
-                                </View>
-                            )}
-                        </View>
+                            <Text style={{ color: 'white', fontSize: 10 }}>
+                                ETA: {formatDuration(progress.remainingDuration || 0)}
+                            </Text>
+                        </>
                     )}
                 </View>
             )}
-
-            {/* Control buttons */}
-            <View style={styles.controlsContainer}>
-                <TouchableOpacity
-                    style={styles.stopButton}
-                    onPress={handleStopNavigation}
-                >
-                    <Ionicons name="close" size={24} color="white" />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={styles.centerButton}
-                    onPress={handleRecenterCamera}
-                >
-                    <Ionicons name="locate" size={24} color="#007AFF" />
-                </TouchableOpacity>
-            </View>
-
-            {/* Trip info and speed */}
-            <View style={styles.bottomContainer}>
-                {/* Speed display */}
-                {currentPosition && (
-                    <View style={styles.speedometer}>
-                        <Text style={styles.speedText}>
-                            {Math.round((currentPosition.speed || 0) * 3.6)}
-                        </Text>
-                        <Text style={styles.speedUnit}>km/h</Text>
-                    </View>
-                )}
-
-                {/* Trip info */}
-                <View style={styles.tripInfo}>
-                    <View style={styles.tripInfoContent}>
-                        <Text style={styles.tripDestination} numberOfLines={1}>
-                            {navigationPhase === 'TO_PICKUP' ? 'To: ' + rideData.pickupAddress : 'To: ' + rideData.destAddress}
-                        </Text>
-                        <Text style={styles.tripPassenger} numberOfLines={1}>
-                            Passenger: {rideData.passengerName}
-                        </Text>
-                        <Text style={styles.tripEarnings}>
-                            Earnings: {rideData.estimatedPrice}
-                        </Text>
-                    </View>
-                    <TouchableOpacity
-                        style={styles.callButton}
-                        onPress={handleCallPassenger}
-                    >
-                        <Ionicons name="call" size={20} color="white" />
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </SafeAreaView>
+        </View>
     );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: 'black',
-    },
-    map: {
-        flex: 1,
-    },
-    loadingOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 1000,
-    },
-    loadingText: {
-        color: 'white',
-        fontSize: 18,
-        fontWeight: '500',
-    },
-    errorOverlay: {
-        position: 'absolute',
-        top: 100,
-        left: 20,
-        right: 20,
-        zIndex: 200,
-    },
-    errorCard: {
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        borderRadius: 10,
-        padding: 15,
-        flexDirection: 'row',
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 5,
-    },
-    errorCardText: {
-        marginLeft: 10,
-        fontSize: 14,
-        color: '#666',
-        fontWeight: '500',
-    },
-    navigationOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 100,
-    },
-    progressContainer: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        padding: 15,
-        alignItems: 'center',
-    },
-    progressBar: {
-        width: '100%',
-        height: 4,
-        backgroundColor: 'rgba(255, 255, 255, 0.3)',
-        borderRadius: 2,
-        marginBottom: 5,
-    },
-    progressFill: {
-        height: '100%',
-        backgroundColor: '#007AFF',
-        borderRadius: 2,
-    },
-    progressText: {
-        color: 'white',
-        fontSize: 14,
-        fontWeight: '500',
-    },
-    instructionPanel: {
-        backgroundColor: 'white',
-        marginHorizontal: 15,
-        marginTop: 15,
-        borderRadius: 15,
-        padding: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 8,
-    },
-    instructionMain: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    maneuverIcon: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: '#007AFF',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 15,
-    },
-    instructionText: {
-        flex: 1,
-    },
-    instructionTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: '#333',
-        marginBottom: 4,
-    },
-    instructionDistance: {
-        fontSize: 14,
-        color: '#666',
-    },
-    nextInstructionPreview: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 15,
-        paddingTop: 15,
-        borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
-    },
-    nextInstructionText: {
-        fontSize: 14,
-        color: '#666',
-        marginLeft: 8,
-        flex: 1,
-    },
-    controlsContainer: {
-        position: 'absolute',
-        right: 15,
-        top: '50%',
-        transform: [{ translateY: -50 }],
-        zIndex: 50,
-    },
-    stopButton: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: 'rgba(255, 0, 0, 0.8)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 10,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        elevation: 5,
-    },
-    centerButton: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: 'white',
-        justifyContent: 'center',
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-        elevation: 4,
-    },
-    bottomContainer: {
-        position: 'absolute',
-        bottom: 30,
-        left: 15,
-        right: 15,
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        zIndex: 50,
-    },
-    speedometer: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        borderRadius: 12,
-        padding: 12,
-        marginRight: 15,
-        alignItems: 'center',
-        minWidth: 80,
-    },
-    speedText: {
-        color: 'white',
-        fontSize: 20,
-        fontWeight: 'bold',
-        textAlign: 'center',
-    },
-    speedUnit: {
-        color: 'white',
-        fontSize: 12,
-        textAlign: 'center',
-        opacity: 0.8,
-    },
-    tripInfo: {
-        flex: 1,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        borderRadius: 15,
-        padding: 15,
-        flexDirection: 'row',
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-    },
-    tripInfoContent: {
-        flex: 1,
-    },
-    tripDestination: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#333',
-        marginBottom: 2,
-    },
-    tripPassenger: {
-        fontSize: 12,
-        color: '#666',
-        marginBottom: 2,
-    },
-    tripEarnings: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#007AFF',
-    },
-    callButton: {
-        backgroundColor: '#007AFF',
-        borderRadius: 20,
-        padding: 12,
-        marginLeft: 10,
-    },
-    errorContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-    },
-    errorTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#333',
-        marginTop: 15,
-        marginBottom: 10,
-    },
-    errorMessage: {
-        fontSize: 16,
-        color: '#666',
-        textAlign: 'center',
-        marginBottom: 20,
-    },
-    errorButtonContainer: {
-        flexDirection: 'row',
-        gap: 10,
-    },
-    errorButton: {
-        backgroundColor: '#007AFF',
-        borderRadius: 8,
-        paddingHorizontal: 20,
-        paddingVertical: 10,
-    },
-    secondaryButton: {
-        backgroundColor: '#6B7280',
-    },
-    errorButtonText: {
-        color: 'white',
-        fontSize: 16,
-        fontWeight: '500',
-    },
-    secondaryButtonText: {
-        color: 'white',
-        fontSize: 16,
-        fontWeight: '500',
-    },
-});
