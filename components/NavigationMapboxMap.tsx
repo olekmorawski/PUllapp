@@ -66,20 +66,6 @@ export interface NavigationMapboxMapRef {
     resetView: () => void;
 }
 
-// Arrow icon generation function
-const getArrowIcon = (type: string, modifier?: string): string => {
-    // Base64 encoded arrow icons for different turn types
-    const arrows = {
-        straight: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAALEwAACxMBAJqcGAAAAlJJREFUaEPtmE1IVFEUx//nzZuZNzOOH6MzjqKWFhZBUBAUQrQIAqMPCFpEixZBtGjRol2baNGiRYsWLVq0aBEEQUEQFASBQVAQGH2YpqbjODrjzLz3bnhDIzPOu2/evBlj5m0f5/zP75x77rn3EvR4UI/jQwGQa4XaVqD09DTi8TgikQji8TgURQEhBKFQCJFIBOFwGJIkgXPe0qqwLWCCEpfLVQSUgBYUMNsCJihxOp1FQAloQQGzLaACfr8/C4RhGPA6PaBOCgCgtoa7Kv0B+AMBeL1eUEoBgBCCeDyOg0ePIDs7m3ZFdIKVBrBl+w5s3boVFJQQRmqYUDNDjBFhKaqKsrIy7Ny1C9u3b09R2JHJRScBSZKwZs0arFmzJgNaL0NTD2e8LAKGlEilUlAUBY7MBzhTGJhO4v7jp7j75ClkRW1PoJgA',
-        left: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAALEwAACxMBAJqcGAAAAmhJREFUaEPtmMtrFEEQxr+e2Z3ZneyuMRtjNnoQxIMgCIIgngTxJIgHQRAEQRAEQRAEQRAEQRAEQTx48B948B94EARBEATxIngQRCMaY0yy2ewkOzs7011ST2DTTFdVV1f1zNuvvqrunhGo8RU1jg8JAJkKVK0Cs2fPRn19PRobG9HQ0IBQKARRFBEMBhEIBOD3+yGKIjjn5VtgDWCCUhRFaQFJUGsJmAFMUDKZTFpAEtRaAmYAE5RhGGkBSVBrCZgBTFCmaaYFJEGtJWAGMEE5jpMWkAS1loAZIJVKoaOjA729vejs7ERbWxva29vR0tKCQCAAQRAgiiIEQYAgCHA6nRBFEaIowuVyweVywePxwO12w+v1wu/3IxAIIBgMIhQKIRwOo7GxEU1NTWhubobf74fL5YLb7YbH44HP50MgEEAwGEQoFEI4HEY0GkVTUxNisRii0SjC4XDxe5/PVzxbEAQ4HA7IsgyHwwFZliFJEiRJgiiKkGUZTqcTLpervP7cCgQJxONx',
-        right: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAALEwAACxMBAJqcGAAAAmJJREFUaEPtmF1IFFEUx//nzuzs7O6sru6qq5ZFUBQEBUFBEBQFQfRBHxQE0QdBQRAUBEFBEBQEQUEQFAQFQUFQ9EEQRL0UBEFBEBQEQUFQFvaxuu7Hzs7OzNwbnBlZ151779yZNaX7Nuf8z+/ce+49dx7BEh9kieMDAZBvBYpWgUQigUQigWQyiVQqBVVVQQhBJBJBJBJBOByGJEngrhQC8AA+nw+iKBYBQkMLBCCMCU3T4Pf7iwChGiNtgBdw3gBegGUZqVQKi4uLxTLiWglMgPl8HqlUCgDg8/ng9Xoh2xAKhVBfX49IJIJgMAiPxwOXywWPxwOv11t8WedyOWSzWWQyGaTTaSwsLCCRSCCRSCCZTGJxcRHpdBqKokBRFKiqimw2i2w2C03TkMvlkMvloGkaNE2DpmkwDAOGYcAwDGGS/K9AW1sbdu3ahd27d',
-    };
-
-    if (type === 'turn' && modifier === 'left') return arrows.left;
-    if (type === 'turn' && modifier === 'right') return arrows.right;
-    return arrows.straight;
-};
-
 const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxMapProps>(({
                                                                                               driverLocation,
                                                                                               destination,
@@ -514,7 +500,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     </Mapbox.PointAnnotation>
                 )}
 
-                {/* Custom children */}
                 {children}
             </Mapbox.MapView>
         </View>
