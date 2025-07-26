@@ -1,4 +1,5 @@
 // services/CustomNavigationService.ts
+import { getDistance } from 'geolib';
 import { DirectionsService } from '@/components/DirectionsService';
 import * as Location from 'expo-location';
 
@@ -241,15 +242,7 @@ export class CustomNavigationService {
         point1: { latitude: number; longitude: number },
         point2: { latitude: number; longitude: number }
     ): number {
-        const R = 6371000; // Earth's radius in meters
-        const dLat = (point2.latitude - point1.latitude) * Math.PI / 180;
-        const dLon = (point2.longitude - point1.longitude) * Math.PI / 180;
-        const a =
-            Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(point1.latitude * Math.PI / 180) * Math.cos(point2.latitude * Math.PI / 180) *
-            Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
+        return getDistance(point1, point2);
     }
 
     private announceInstruction(instruction: NavigationInstruction) {

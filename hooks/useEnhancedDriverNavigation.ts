@@ -1,4 +1,5 @@
 // hooks/useEnhancedDriverNavigation.ts - Fixed version
+import { getBearing, getDistance } from 'geolib';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import { useLocation } from '@/hooks/Location/useLocation';
@@ -117,17 +118,7 @@ export const useEnhancedDriverNavigation = ({
         }
 
         try {
-            const lat1 = lastLocation.coords.latitude * Math.PI / 180;
-            const lng1 = lastLocation.coords.longitude * Math.PI / 180;
-            const lat2 = newLocation.coords.latitude * Math.PI / 180;
-            const lng2 = newLocation.coords.longitude * Math.PI / 180;
-
-            const dLng = lng2 - lng1;
-            const y = Math.sin(dLng) * Math.cos(lat2);
-            const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-
-            let bearing = Math.atan2(y, x) * 180 / Math.PI;
-            bearing = (bearing + 360) % 360; // Normalize to 0-360
+            const bearing = getBearing(lastLocation.coords, newLocation.coords);
 
             // Validate calculated bearing
             if (!isValidNumber(bearing)) {
@@ -163,19 +154,7 @@ export const useEnhancedDriverNavigation = ({
         }
 
         try {
-            const R = 6371e3; // Earth's radius in meters
-            const φ1 = lat1 * Math.PI / 180;
-            const φ2 = lat2 * Math.PI / 180;
-            const Δφ = (lat2 - lat1) * Math.PI / 180;
-            const Δλ = (lng2 - lng1) * Math.PI / 180;
-
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-            const distance = R * c;
-            return isValidNumber(distance) ? Math.max(0, distance) : 0;
+            return getDistance({ latitude: lat1, longitude: lng1 }, { latitude: lat2, longitude: lng2 });
         } catch (error) {
             console.warn('Error calculating distance:', error);
             return 0;
