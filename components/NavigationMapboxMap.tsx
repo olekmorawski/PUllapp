@@ -4,6 +4,7 @@ import {Feature} from "geojson";
 import Mapbox, {UserTrackingMode} from '@rnmapbox/maps';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
 import { Ionicons } from '@expo/vector-icons';
+import {EnhancedNavigationArrow} from "@/components/NavigationArrow";
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
@@ -466,27 +467,35 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 )}
 
                 {/* Maneuver arrows at decision points */}
-                {maneuverPoints.map((point, index) => (
-                    <Mapbox.PointAnnotation
-                        key={`maneuver_${index}`}
-                        id={`maneuver_${index}`}
-                        coordinate={point.coordinate}
-                    >
-                        <View style={maneuverArrowStyle}>
-                            <Ionicons
-                                name={
-                                    point.type === 'turn' && point.modifier === 'left' ? 'arrow-back' :
-                                        point.type === 'turn' && point.modifier === 'right' ? 'arrow-forward' :
-                                            point.type === 'depart' ? 'play' :
-                                                point.type === 'arrive' ? 'flag' :
-                                                    'arrow-up'
-                                }
-                                size={24}
-                                color="white"
+                {maneuverPoints.map((point, index) => {
+                    // Calculate distance to next maneuver (if available)
+                    const isNextManeuver = index === 0;
+                    const distanceToManeuver = point.distance || 100; // Default distance
+
+                    // Determine arrow color based on distance
+                    const getManeuverColor = (distance: number) => {
+                        if (distance < 50) return '#EA4335'; // Red - immediate
+                        if (distance < 200) return '#FF6B00'; // Orange - soon
+                        return '#4285F4'; // Blue - upcoming
+                    };
+
+                    return (
+                        <Mapbox.PointAnnotation
+                            key={`maneuver_${index}`}
+                            id={`maneuver_${index}`}
+                            coordinate={point.coordinate}
+                        >
+                            <EnhancedNavigationArrow
+                                type={point.type}
+                                modifier={point.modifier}
+                                size={60}
+                                color={getManeuverColor(distanceToManeuver)}
+                                animated={isNextManeuver && distanceToManeuver < 100}
                             />
-                        </View>
-                    </Mapbox.PointAnnotation>
-                ))}
+                        </Mapbox.PointAnnotation>
+                    );
+                })}
+
 
                 {/* Destination Marker */}
                 {validDestination && (
