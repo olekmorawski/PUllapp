@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
-import { View, Text, ActivityIndicator, Dimensions, ViewStyle, Image } from 'react-native';
+import { View, Text, ActivityIndicator, Dimensions, ViewStyle } from 'react-native';
+import {Feature} from "geojson";
 import Mapbox, {UserTrackingMode} from '@rnmapbox/maps';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,7 +36,7 @@ const isValidCoordinateArray = (coords: any): coords is [number, number] => {
 interface NavigationMapboxMapProps {
     driverLocation?: { latitude: number; longitude: number } | null;
     destination?: { latitude: number; longitude: number } | null;
-    routeGeoJSON?: GeoJSON.Feature | null;
+    routeGeoJSON?: Feature | null;
     maneuverPoints?: Array<{
         coordinate: [number, number];
         type: string;
@@ -112,18 +113,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
     const validBearing = isValidNumber(bearing) ? bearing : 0;
     const validPitch = isValidNumber(pitch) ? Math.max(0, Math.min(60, pitch)) : 60;
     const validZoomLevel = isValidNumber(zoomLevel) ? Math.max(1, Math.min(22, zoomLevel)) : 18;
-
-    console.log('🗺️ NavigationMapboxMap render:', {
-        validDriverLocation,
-        validDestination,
-        hasRoute: !!routeGeoJSON,
-        maneuverPointsCount: maneuverPoints.length,
-        validBearing,
-        validPitch,
-        validZoomLevel,
-        isMapReady,
-        followMode
-    });
 
     // Imperative methods exposed via ref
     useImperativeHandle(ref, () => ({
@@ -464,19 +453,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                         minDisplacement={1}
                         onUpdate={handleLocationUpdate}
                     >
-                        <View style={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: 12,
-                            backgroundColor: '#4285F4',
-                            borderWidth: 3,
-                            borderColor: 'white',
-                            shadowColor: '#000',
-                            shadowOffset: { width: 0, height: 2 },
-                            shadowOpacity: 0.3,
-                            shadowRadius: 4,
-                            elevation: 5,
-                        }} />
                     </Mapbox.UserLocation>
                 )}
 
