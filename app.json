@@ -45,13 +45,6 @@
     },
     "plugins": [
       [
-        "@complexify/expo-mapbox-navigation",
-        {
-          "accessToken": "pk.eyJ1Ijoib2xla21vcmF3c2tpIiwiYSI6ImNtZGkwcmczYTAwZmoyanM1eGdzZWh4NGsifQ.xHnSlxwo27wFFs2o6-YsTg",
-          "mapboxMapsVersion": "11.7.0"
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "ios": {
@@ -84,8 +77,7 @@
         }
       ],
       "expo-web-browser",
-      "expo-secure-store",
-      "expo-build-properties"
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

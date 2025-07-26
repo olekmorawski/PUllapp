@@ -11,7 +11,6 @@
     "lint": "expo lint"
   },
   "dependencies": {
-    "@complexify/expo-mapbox-navigation": "^1.3.4",
     "@dynamic-labs/client": "^4.21.1",
     "@dynamic-labs/react-hooks": "^4.21.1",
     "@dynamic-labs/react-native-extension": "^4.21.1",
@@ -39,12 +38,14 @@
     "expo-location": "~18.1.6",
     "expo-router": "~5.1.2",
     "expo-secure-store": "~14.2.3",
+    "expo-speech": "^13.1.7",
     "expo-splash-screen": "~0.30.9",
     "expo-status-bar": "~2.2.3",
     "expo-symbols": "~0.4.5",
     "expo-system-ui": "~5.0.9",
     "expo-web-browser": "~14.2.0",
     "geojson": "^0.5.0",
+    "geolib": "^3.3.4",
     "nativewind": "^4.1.23",
     "react": "19.0.0",
     "react-dom": "19.0.0",
@@ -55,6 +56,7 @@
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "^5.4.0",
     "react-native-screens": "~4.11.1",
+    "react-native-svg": "^15.12.0",
     "react-native-web": "~0.20.0",
     "react-native-webview": "13.13.5"
   },
