@@ -1,5 +1,5 @@
 // hooks/useEnhancedDriverNavigation.ts - Fixed version
-import { getBearing, getDistance } from 'geolib';
+import { getRhumbLineBearing, getDistance } from 'geolib';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import { useLocation } from '@/hooks/Location/useLocation';
@@ -118,7 +118,17 @@ export const useEnhancedDriverNavigation = ({
         }
 
         try {
-            const bearing = getBearing(lastLocation.coords, newLocation.coords);
+            // Use getRhumbLineBearing instead of getBearing
+            const bearing = getRhumbLineBearing(
+                {
+                    latitude: lastLocation.coords.latitude,
+                    longitude: lastLocation.coords.longitude
+                },
+                {
+                    latitude: newLocation.coords.latitude,
+                    longitude: newLocation.coords.longitude
+                }
+            );
 
             // Validate calculated bearing
             if (!isValidNumber(bearing)) {
@@ -154,7 +164,10 @@ export const useEnhancedDriverNavigation = ({
         }
 
         try {
-            return getDistance({ latitude: lat1, longitude: lng1 }, { latitude: lat2, longitude: lng2 });
+            return getDistance(
+                { latitude: lat1, longitude: lng1 },
+                { latitude: lat2, longitude: lng2 }
+            );
         } catch (error) {
             console.warn('Error calculating distance:', error);
             return 0;

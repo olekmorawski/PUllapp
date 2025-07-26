@@ -6,7 +6,7 @@ import {
     NavigationRoute,
     NavigationProgress,
     NavigationInstruction
-} from '@/services/OSRMNavigationService';
+} from '@/hooks/OSRMNavigationService';
 import * as Location from 'expo-location';
 
 interface UseOSRMNavigationProps {
