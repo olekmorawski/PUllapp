@@ -1,6 +1,5 @@
-// app/(app)/driver-navigation.tsx - Fixed with Voice Guidance and Maneuver Arrows
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Alert, SafeAreaView, Dimensions, Animated, ViewStyle, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, SafeAreaView, Dimensions } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
@@ -8,12 +7,10 @@ import { useOSRMNavigation } from '@/hooks/useOSRMNavigation';
 import { RideNavigationData } from '@/hooks/useEnhancedDriverNavigation';
 import NavigationMapboxMap, { NavigationMapboxMapRef } from '@/components/NavigationMapboxMap';
 import {
-    NavigationCompass,
     SpeedIndicator,
     EtaCard,
     NavigationInstruction,
     NavigationControls,
-    NavigationStatusBar
 } from '@/components/NavigationUIComponents';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -60,187 +57,6 @@ const validateParams = (params: any): RideNavigationData | null => {
         console.error('❌ Error creating ride data:', error);
         return null;
     }
-};
-
-interface NavigationInfoPanelProps {
-    currentInstruction: any;
-    nextInstruction: any;
-    progress: any;
-    rideData: RideNavigationData;
-    onCancel: () => void;
-    formatDistance: (meters: number) => string;
-    formatDuration: (seconds: number) => string;
-    isMuted: boolean;
-    onMuteToggle: () => void;
-}
-
-const NavigationInfoPanel: React.FC<NavigationInfoPanelProps> = ({
-                                                                     currentInstruction,
-                                                                     nextInstruction,
-                                                                     progress,
-                                                                     rideData,
-                                                                     onCancel,
-                                                                     formatDistance,
-                                                                     formatDuration,
-                                                                     isMuted,
-                                                                     onMuteToggle
-                                                                 }) => {
-    const slideAnim = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-        Animated.timing(slideAnim, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-        }).start();
-    }, [slideAnim]);
-
-    return (
-        <Animated.View style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            transform: [{
-                translateY: slideAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-100, 0],
-                })
-            }]
-        }}>
-            <SafeAreaView>
-                <View style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                    marginHorizontal: 16,
-                    marginTop: 8,
-                    borderRadius: 16,
-                    padding: 16,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 8,
-                    elevation: 5,
-                }}>
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between'
-                    }}>
-                        <View style={{ flex: 1 }}>
-                            <Text style={{
-                                fontSize: 18,
-                                fontWeight: '700',
-                                color: '#1a1a1a',
-                                marginBottom: 4
-                            }}>
-                                Navigation Active
-                            </Text>
-                            <Text style={{
-                                fontSize: 14,
-                                color: '#666',
-                                lineHeight: 20
-                            }} numberOfLines={2}>
-                                {currentInstruction?.text || `Navigating to ${rideData.destAddress}`}
-                            </Text>
-                        </View>
-
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            marginRight: 12
-                        }}>
-                            <Ionicons
-                                name={isMuted ? "volume-mute" : "volume-high"}
-                                size={20}
-                                color="#666"
-                                style={{ marginRight: 8 }}
-                            />
-                            <Switch
-                                value={!isMuted}
-                                onValueChange={() => onMuteToggle()}
-                                trackColor={{ false: "#767577", true: "#4285F4" }}
-                                thumbColor={!isMuted ? "#fff" : "#f4f3f4"}
-                            />
-                        </View>
-
-                        <TouchableOpacity
-                            onPress={onCancel}
-                            style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: 18,
-                                backgroundColor: '#f5f5f5',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                            }}
-                        >
-                            <Ionicons name="close" size={20} color="#666" />
-                        </TouchableOpacity>
-                    </View>
-
-                    {progress && (
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            marginTop: 12,
-                            paddingTop: 12,
-                            borderTopWidth: 1,
-                            borderTopColor: '#f0f0f0'
-                        }}>
-                            <View style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                flex: 1
-                            }}>
-                                <Ionicons name="time" size={16} color="#4285F4" />
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '600',
-                                    marginLeft: 6,
-                                    color: '#4285F4'
-                                }}>
-                                    {formatDuration(progress.durationRemaining || 0)}
-                                </Text>
-                            </View>
-
-                            <View style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                flex: 1
-                            }}>
-                                <Ionicons name="navigate" size={16} color="#34A853" />
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '600',
-                                    marginLeft: 6,
-                                    color: '#34A853'
-                                }}>
-                                    {formatDistance(progress.distanceRemaining || 0)}
-                                </Text>
-                            </View>
-
-                            <View style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                flex: 1,
-                                justifyContent: 'flex-end'
-                            }}>
-                                <Ionicons name="cash" size={16} color="#FBBC04" />
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '600',
-                                    marginLeft: 6,
-                                    color: '#FBBC04'
-                                }}>
-                                    {rideData.estimatedPrice}
-                                </Text>
-                            </View>
-                        </View>
-                    )}
-                </View>
-            </SafeAreaView>
-        </Animated.View>
-    );
 };
 
 export default function OSRMDriverNavigationScreen() {
@@ -645,20 +461,6 @@ export default function OSRMDriverNavigationScreen() {
                 mapStyle="mapbox://styles/mapbox/navigation-day-v1"
             />
 
-            {/* Navigation Status Bar */}
-            <NavigationStatusBar
-                connectionStatus="connected"
-                gpsAccuracy="high"
-                batteryLevel={85}
-                isVisible={true}
-            />
-
-            {/* Navigation Compass */}
-            <NavigationCompass
-                bearing={currentHeading}
-                isVisible={isNavigating}
-                onPress={handleRecenter}
-            />
 
             {/* Speed Indicator */}
             {currentPosition && (
@@ -700,19 +502,6 @@ export default function OSRMDriverNavigationScreen() {
                 }}
                 isMuted={isMuted}
                 isVisible={isNavigating}
-            />
-
-            {/* Top info panel with mute control */}
-            <NavigationInfoPanel
-                currentInstruction={currentInstruction}
-                nextInstruction={nextInstruction}
-                progress={progress}
-                rideData={rideData}
-                onCancel={handleBackPress}
-                formatDistance={formatDistance}
-                formatDuration={formatDuration}
-                isMuted={isMuted}
-                onMuteToggle={handleVolumeToggle}
             />
 
             {/* Center crosshair indicator */}

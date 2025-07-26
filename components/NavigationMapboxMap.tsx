@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { View, Text, ActivityIndicator, Dimensions, ViewStyle, Image } from 'react-native';
-import Mapbox from '@rnmapbox/maps';
+import Mapbox, {UserTrackingMode} from '@rnmapbox/maps';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -87,7 +87,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                                                                                               bearing = 0,
                                                                                               pitch = 60,
                                                                                               zoomLevel = 18,
-                                                                                              followMode = 'course',
                                                                                               onLocationUpdate,
                                                                                               onCameraChange,
                                                                                               showUserLocation = true,
@@ -106,7 +105,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
     const [currentCameraState, setCurrentCameraState] = useState<any>(null);
     const [mapError, setMapError] = useState<string | null>(null);
     const [lastCameraUpdate, setLastCameraUpdate] = useState<number>(0);
-
+    const [followMode, setFollowMode] = useState<'none' | 'follow' | 'course' | 'compass'>('follow');
     // Validate props
     const validDriverLocation = isValidCoordinate(driverLocation) ? driverLocation : null;
     const validDestination = isValidCoordinate(destination) ? destination : null;
@@ -427,6 +426,12 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 styleURL={mapStyle}
                 logoEnabled={false}
                 attributionEnabled={false}
+                onTouchStart={() => {
+                    // Disable camera following when user touches map
+                    if (followMode !== 'none') {
+                        setFollowMode('none');
+                    }
+                }}
                 compassEnabled={showCompass}
                 scaleBarEnabled={showScaleBar}
                 rotateEnabled={enableRotation}
@@ -440,9 +445,15 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 <Mapbox.Camera
                     ref={cameraRef}
                     followUserLocation={followMode !== 'none'}
-                    followUserMode={followMode === 'course' ? 'course' : followMode === 'compass' ? 'compass' : 'normal'}
-                    followZoomLevel={validZoomLevel}
-                    followPitch={validPitch}
+                    followUserMode={
+                        (followMode === 'course'
+                            ? 'course'
+                            : followMode === 'compass'
+                                ? 'compass'
+                                : 'normal') as UserTrackingMode
+                    }
+                    followZoomLevel={zoomLevel}
+                    followPitch={pitch}
                 />
 
                 {/* User Location with custom puck */}
@@ -469,7 +480,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     </Mapbox.UserLocation>
                 )}
 
-                {/* Route Display - Multiple layers for better visibility */}
                 {routeGeoJSON && routeGeoJSON.geometry && (
                     <Mapbox.ShapeSource
                         id="routeSource"
