@@ -476,25 +476,19 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                         shape={routeGeoJSON}
                         onError={(error) => console.warn('Route source error:', error)}
                     >
-                        {/* Black casing for contrast */}
                         <Mapbox.LineLayer
                             id="routeCasing"
                             style={routeStyles.routeCasing}
-                            belowLayerID="road-label"
                         />
 
-                        {/* White outline */}
                         <Mapbox.LineLayer
                             id="routeOutline"
                             style={routeStyles.routeOutline}
-                            belowLayerID="road-label"
                         />
 
-                        {/* Blue route line */}
                         <Mapbox.LineLayer
                             id="routeLayer"
                             style={routeStyles.routeLine}
-                            belowLayerID="road-label"
                         />
                     </Mapbox.ShapeSource>
                 )}
