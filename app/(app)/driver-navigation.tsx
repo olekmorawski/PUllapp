@@ -503,34 +503,6 @@ export default function OSRMDriverNavigationScreen() {
                 isMuted={isMuted}
                 isVisible={isNavigating}
             />
-
-            {/* Center crosshair indicator */}
-            <View style={{
-                position: 'absolute',
-                top: SCREEN_HEIGHT / 2 - 12,
-                left: SCREEN_WIDTH / 2 - 12,
-                width: 24,
-                height: 24,
-                borderRadius: 12,
-                backgroundColor: 'rgba(66, 133, 244, 0.9)',
-                borderWidth: 3,
-                borderColor: 'white',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.3,
-                shadowRadius: 4,
-                elevation: 5,
-                pointerEvents: 'none',
-                alignItems: 'center',
-                justifyContent: 'center'
-            }}>
-                <View style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: 'white'
-                }} />
-            </View>
         </View>
     );
 }
