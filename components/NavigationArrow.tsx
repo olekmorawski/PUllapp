@@ -1,658 +1,623 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Animated, StyleSheet, ViewStyle } from 'react-native';
-import Svg, { Path, G, Polygon, Circle, Defs, Filter, FeDropShadow, Text } from 'react-native-svg';
+import React, { useMemo } from 'react';
+import { View } from 'react-native';
+import Mapbox from '@rnmapbox/maps';
+import * as turf from '@turf/turf';
+import { Feature, LineString, Point, Position } from 'geojson';
 
-// Type definitions
-interface ArrowProps {
-    size?: number;
+interface RoadFittedArrowProps {
+    routeGeoJSON: Feature | null;
+    maneuverPoint: {
+        coordinate: [number, number];
+        type: string;
+        modifier?: string;
+        instruction: string;
+        index?: number;
+    };
+    uniqueKey: string | number; // Required unique key for the arrow
+    arrowLength?: number; // Length of arrow in meters
+    arrowWidth?: number; // Width of arrow in pixels
     color?: string;
-    animated?: boolean;
+    opacity?: number;
 }
 
-interface DirectionalArrowProps extends ArrowProps {
-    direction?: 'left' | 'right';
+interface ArrowGeometry {
+    shaft: Feature<LineString>;
+    head: Feature<LineString>[];
+    outline?: Feature<LineString>;
 }
 
-interface RoundaboutArrowProps extends ArrowProps {
-    exit?: number;
-}
+/**
+ * Extracts a segment of the route for arrow placement
+ * The arrow should END at the maneuver point, not start there
+ */
+function extractRouteSegmentForArrow(
+    routeLine: Position[],
+    maneuverCoord: [number, number],
+    arrowLength: number = 50 // Length in meters
+): Position[] {
+    try {
+        const maneuverPoint = turf.point(maneuverCoord);
 
-interface NavigationArrowProps {
-    type: string;
-    modifier?: string;
-    size?: number;
-    color?: string;
-    animated?: boolean;
-}
+        // Find the exact index of the maneuver point on the route
+        let closestIdx = -1;
+        let minDist = Infinity;
 
-// Base arrow container with shadow
-const ArrowContainer: React.FC<{ children: React.ReactNode; size?: number; animated?: boolean }> = ({
-                                                                                                        children,
-                                                                                                        size = 50,
-                                                                                                        animated = false
-                                                                                                    }) => {
-    const scaleAnim = useRef(new Animated.Value(1)).current;
-
-    useEffect(() => {
-        if (animated) {
-            Animated.loop(
-                Animated.sequence([
-                    Animated.timing(scaleAnim, {
-                        toValue: 1.1,
-                        duration: 1000,
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(scaleAnim, {
-                        toValue: 1,
-                        duration: 1000,
-                        useNativeDriver: true,
-                    }),
-                ])
-            ).start();
+        for (let i = 0; i < routeLine.length; i++) {
+            const dist = turf.distance(
+                turf.point(routeLine[i]),
+                maneuverPoint,
+                { units: 'meters' }
+            );
+            if (dist < minDist) {
+                minDist = dist;
+                closestIdx = i;
+            }
         }
-    }, [animated, scaleAnim]);
 
-    const containerStyle: ViewStyle = {
-        width: size,
-        height: size,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
+        // If maneuver point is too far from route, skip
+        if (minDist > 50) { // More than 50m away from route
+            console.warn(`Maneuver point too far from route: ${minDist.toFixed(0)}m`);
+            return [];
+        }
+
+        // Calculate how many points we need for the arrow length
+        // The arrow should END at the maneuver point
+        let accumulatedDist = 0;
+        let startIdx = closestIdx;
+
+        // Walk backwards along the route to find the start point
+        for (let i = closestIdx - 1; i >= 0 && accumulatedDist < arrowLength; i--) {
+            const segmentDist = turf.distance(
+                turf.point(routeLine[i]),
+                turf.point(routeLine[i + 1]),
+                { units: 'meters' }
+            );
+            accumulatedDist += segmentDist;
+            startIdx = i;
+        }
+
+        // Extract the segment from start to maneuver point
+        const segment = routeLine.slice(startIdx, closestIdx + 1);
+
+        // Ensure we have enough points for a visible arrow
+        if (segment.length < 2) {
+            // Try to get more points
+            const expandedStart = Math.max(0, closestIdx - 20);
+            const expandedEnd = Math.min(routeLine.length - 1, closestIdx + 2);
+            return routeLine.slice(expandedStart, expandedEnd + 1);
+        }
+
+        // Add the exact maneuver coordinate at the end to ensure precision
+        const lastSegmentPoint = segment[segment.length - 1];
+        const lastDist = turf.distance(
+            turf.point(lastSegmentPoint),
+            maneuverPoint,
+            { units: 'meters' }
+        );
+
+        // Only add maneuver point if it's close enough to the route
+        if (lastDist < 10 && lastDist > 0.1) {
+            segment.push(maneuverCoord);
+        }
+
+        return segment;
+    } catch (error) {
+        console.warn('Error extracting route segment for arrow:', error);
+        return [];
+    }
+}
+
+/**
+ * Creates a curved arrow geometry that follows the road
+ */
+function createCurvedArrowGeometry(
+    routeSegment: Position[],
+    maneuverType: string,
+    modifier?: string
+): ArrowGeometry | null {
+    if (!routeSegment || routeSegment.length < 2) {
+        console.warn('Route segment too short for arrow:', routeSegment?.length);
+        return null;
+    }
+
+    try {
+        const line = turf.lineString(routeSegment);
+        const lineLength = turf.length(line, { units: 'meters' });
+
+        // Determine arrow properties based on maneuver type
+        const arrowConfig = getArrowConfig(maneuverType, modifier);
+
+        // Calculate shaft length based on available line length and config
+        const shaftLength = Math.min(lineLength * 0.8, arrowConfig.maxLength);
+
+        // Ensure minimum arrow length for visibility
+        if (shaftLength < 10) {
+            console.warn('Arrow shaft too short:', shaftLength);
+            // Use the entire segment for very short sections
+            const smoothedShaft = smoothPath(routeSegment);
+            const headGeometry = createArrowHead(
+                smoothedShaft,
+                arrowConfig.headSize,
+                maneuverType,
+                modifier
+            );
+
+            return {
+                shaft: turf.lineString(smoothedShaft),
+                head: headGeometry,
+                outline: createArrowOutline(smoothedShaft, arrowConfig.width)
+            };
+        }
+
+        // Sample points along the line for smooth arrow shaft
+        const numSamples = Math.max(5, Math.floor(shaftLength / 5)); // Sample every 5 meters
+
+        const shaftPoints: Position[] = [];
+        for (let i = 0; i <= numSamples; i++) {
+            const distance = (i / numSamples) * shaftLength;
+            const point = turf.along(line, distance, { units: 'meters' });
+            shaftPoints.push(point.geometry.coordinates);
+        }
+
+        // Smooth the shaft using bezier curve if needed
+        const smoothedShaft = smoothPath(shaftPoints);
+
+        // Create arrow head at the end of the shaft
+        const headGeometry = createArrowHead(
+            smoothedShaft,
+            arrowConfig.headSize,
+            maneuverType,
+            modifier
+        );
+
+        return {
+            shaft: turf.lineString(smoothedShaft),
+            head: headGeometry,
+            outline: createArrowOutline(smoothedShaft, arrowConfig.width)
+        };
+    } catch (error) {
+        console.warn('Error creating curved arrow for', maneuverType, ':', error);
+        return null;
+    }
+}
+
+/**
+ * Get arrow configuration based on maneuver type
+ */
+function getArrowConfig(type: string, modifier?: string) {
+    const configs: Record<string, any> = {
+        'turn': {
+            maxLength: 50,
+            width: 10,
+            headSize: 15,
+            color: '#4285F4'
+        },
+        'sharp turn': {
+            maxLength: 45,
+            width: 12,
+            headSize: 16,
+            color: '#FF6B00'
+        },
+        'slight turn': {
+            maxLength: 60,
+            width: 8,
+            headSize: 12,
+            color: '#4285F4'
+        },
+        'merge': {
+            maxLength: 70,
+            width: 9,
+            headSize: 13,
+            color: '#FBBC04'
+        },
+        'fork': {
+            maxLength: 55,
+            width: 10,
+            headSize: 14,
+            color: '#4285F4'
+        },
+        'roundabout': {
+            maxLength: 50,
+            width: 10,
+            headSize: 14,
+            color: '#4285F4',
+            curved: true
+        },
+        'ramp': {
+            maxLength: 65,
+            width: 10,
+            headSize: 14,
+            color: '#4285F4'
+        },
+        'continue': {
+            maxLength: 80,
+            width: 8,
+            headSize: 12,
+            color: '#34A853'
+        },
+        'depart': {
+            maxLength: 60,
+            width: 10,
+            headSize: 14,
+            color: '#34A853'
+        },
+        'arrive': {
+            maxLength: 50,
+            width: 10,
+            headSize: 14,
+            color: '#EA4335'
+        }
     };
 
-    if (animated) {
-        return (
-            <Animated.View style={[containerStyle, { transform: [{ scale: scaleAnim }] }]}>
-                {children}
-            </Animated.View>
+    // Check for sharp modifier
+    if (modifier?.includes('sharp')) {
+        return configs['sharp turn'];
+    }
+    if (modifier?.includes('slight')) {
+        return configs['slight turn'];
+    }
+
+    // Default configuration
+    const defaultConfig = configs[type] || {
+        maxLength: 50,
+        width: 10,
+        headSize: 14,
+        color: '#4285F4'
+    };
+
+    return defaultConfig;
+}
+
+/**
+ * Smooth path using quadratic bezier interpolation
+ */
+function smoothPath(points: Position[]): Position[] {
+    if (points.length <= 2) return points;
+
+    const smoothed: Position[] = [points[0]];
+
+    for (let i = 1; i < points.length - 1; i++) {
+        const prev = points[i - 1];
+        const curr = points[i];
+        const next = points[i + 1];
+
+        // Add current point
+        smoothed.push(curr);
+
+        // Add interpolated point for smoothing
+        if (i < points.length - 2) {
+            const midPoint: Position = [
+                (curr[0] + next[0]) / 2,
+                (curr[1] + next[1]) / 2
+            ];
+            smoothed.push(midPoint);
+        }
+    }
+
+    smoothed.push(points[points.length - 1]);
+    return smoothed;
+}
+
+/**
+ * Create arrow head geometry
+ */
+function createArrowHead(
+    shaftPoints: Position[],
+    headSize: number,
+    maneuverType: string,
+    modifier?: string
+): Feature<LineString>[] {
+    if (shaftPoints.length < 2) return [];
+
+    const lastPoint = shaftPoints[shaftPoints.length - 1];
+    const secondLastPoint = shaftPoints[shaftPoints.length - 2];
+
+    // Calculate direction
+    const bearing = turf.bearing(
+        turf.point(secondLastPoint),
+        turf.point(lastPoint)
+    );
+
+    // Create arrow head based on maneuver type
+    const headLines: Feature<LineString>[] = [];
+
+    if (maneuverType === 'turn' || maneuverType === 'fork') {
+        // Create V-shaped arrow head
+        const leftWing = turf.destination(
+            turf.point(lastPoint),
+            headSize / 1000, // Convert to km
+            bearing - 150,
+            { units: 'kilometers' }
+        );
+
+        const rightWing = turf.destination(
+            turf.point(lastPoint),
+            headSize / 1000,
+            bearing + 150,
+            { units: 'kilometers' }
+        );
+
+        headLines.push(
+            turf.lineString([leftWing.geometry.coordinates, lastPoint]),
+            turf.lineString([rightWing.geometry.coordinates, lastPoint])
+        );
+    } else if (maneuverType === 'merge') {
+        // Create merge-style arrow head
+        const side = modifier === 'left' ? -1 : 1;
+        const wingAngle = 135 * side;
+
+        const wing = turf.destination(
+            turf.point(lastPoint),
+            headSize / 1000,
+            bearing + wingAngle,
+            { units: 'kilometers' }
+        );
+
+        headLines.push(
+            turf.lineString([wing.geometry.coordinates, lastPoint])
         );
     }
 
-    return <View style={containerStyle}>{children}</View>;
-};
+    return headLines;
+}
 
-// Straight arrow component
-export const StraightArrow: React.FC<ArrowProps> = ({
-                                                        size = 60,
-                                                        color = '#4285F4',
-                                                        animated = false
-                                                    }) => {
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
+/**
+ * Create arrow outline for better visibility
+ */
+function createArrowOutline(points: Position[], width: number): Feature<LineString> | undefined {
+    if (points.length < 2) return undefined;
 
-                {/* Background circle */}
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
+    try {
+        // Create a buffer around the line for outline effect
+        const line = turf.lineString(points);
+        return line;
+    } catch (error) {
+        console.warn('Error creating arrow outline:', error);
+        return undefined;
+    }
+}
 
-                {/* Arrow shaft */}
-                <Path
-                    d="M 60 85 L 60 35"
-                    stroke={color}
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                />
-                {/* Arrow head */}
-                <Polygon
-                    points="60,25 50,40 55,38 55,35 65,35 65,38 70,40"
-                    fill={color}
-                />
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// U-turn arrow component
-export const UTurnArrow: React.FC<DirectionalArrowProps> = ({
-                                                                direction = 'left',
-                                                                size = 60,
-                                                                color = '#FF6B00',
-                                                                animated = false
-                                                            }) => {
-    const isLeft = direction === 'left';
-
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
-
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
-
-                <G transform={isLeft ? 'scale(-1, 1) translate(-120, 0)' : ''}>
-                    {/* U-turn curve */}
-                    <Path
-                        d="M 35 75 L 35 50 Q 35 25, 60 25 Q 85 25, 85 50 L 85 70"
-                        stroke={color}
-                        strokeWidth="9"
-                        strokeLinecap="round"
-                        fill="none"
-                    />
-                    {/* Arrow head */}
-                    <Polygon
-                        points="85,80 75,65 80,68 80,70 90,70 90,68 95,65"
-                        fill={color}
-                    />
-                    {/* U-turn indicator */}
-                    <Circle cx="60" cy="50" r="3" fill={color} opacity="0.5" />
-                </G>
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// Roundabout arrow component with exit number
-export const RoundaboutArrow: React.FC<RoundaboutArrowProps> = ({
-                                                                    exit = 1,
-                                                                    size = 60,
-                                                                    color = '#4285F4',
-                                                                    animated = false
+/**
+ * Road-fitted arrow component that bends with the road
+ */
+export const RoadFittedArrow: React.FC<RoadFittedArrowProps> = ({
+                                                                    routeGeoJSON,
+                                                                    maneuverPoint,
+                                                                    uniqueKey,
+                                                                    arrowLength = 50, // Increased default length
+                                                                    arrowWidth = 10,  // Increased default width
+                                                                    color,
+                                                                    opacity = 1.0
                                                                 }) => {
-    // Calculate rotation based on exit number (90 degrees per exit)
-    const rotation = -90 + (exit * 90);
+    const arrowGeometry = useMemo(() => {
+        if (!routeGeoJSON || !routeGeoJSON.geometry || routeGeoJSON.geometry.type !== 'LineString') {
+            console.warn('Invalid route GeoJSON for arrow:', uniqueKey);
+            return null;
+        }
 
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
+        const routeCoords = routeGeoJSON.geometry.coordinates;
+        const segment = extractRouteSegmentForArrow(
+            routeCoords,
+            maneuverPoint.coordinate,
+            arrowLength
+        );
 
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
+        if (segment.length === 0) {
+            console.warn(`No valid segment for arrow at`, maneuverPoint.coordinate);
+            return null;
+        }
 
-                {/* Roundabout circle */}
-                <Path
-                    d="M 60 30 A 25 25 0 1 1 59.9 30"
-                    stroke={color}
-                    strokeWidth="8"
-                    fill="none"
-                    strokeDasharray="6,4"
-                />
+        const geometry = createCurvedArrowGeometry(segment, maneuverPoint.type, maneuverPoint.modifier);
 
-                {/* Entry arrow */}
-                <Path
-                    d="M 60 90 L 60 65"
-                    stroke={color}
-                    strokeWidth="8"
-                    strokeLinecap="round"
-                />
+        if (!geometry) {
+            console.warn(`Failed to create arrow geometry for maneuver ${maneuverPoint.type} at`, maneuverPoint.coordinate);
+        } else {
+            console.log(`Created arrow for ${maneuverPoint.type} at`, maneuverPoint.coordinate);
+        }
 
-                {/* Exit arrow */}
-                <G transform={`rotate(${rotation} 60 60)`}>
-                    <Path
-                        d="M 60 35 L 60 15"
-                        stroke={color}
-                        strokeWidth="8"
-                        strokeLinecap="round"
-                    />
-                    <Polygon
-                        points="60,10 52,20 56,18 56,15 64,15 64,18 68,20"
-                        fill={color}
-                    />
-                </G>
+        return geometry;
+    }, [routeGeoJSON, maneuverPoint, arrowLength]);
 
-                {/* Exit number */}
-                <Circle cx="60" cy="60" r="12" fill={color} />
-                <Text
-                    x="60"
-                    y="65"
-                    textAnchor="middle"
-                    fill="white"
-                    fontSize="16"
-                    fontWeight="bold"
-                >
-                    {exit}
-                </Text>
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// Merge arrow component
-export const MergeArrow: React.FC<DirectionalArrowProps> = ({
-                                                                direction = 'right',
-                                                                size = 60,
-                                                                color = '#FBBC04',
-                                                                animated = false
-                                                            }) => {
-    const isLeft = direction === 'left';
-
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
-
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
-
-                <G transform={isLeft ? 'scale(-1, 1) translate(-120, 0)' : ''}>
-                    {/* Main road */}
-                    <Path
-                        d="M 20 75 L 90 75"
-                        stroke={color}
-                        strokeWidth="8"
-                        strokeLinecap="round"
-                        opacity="0.6"
-                    />
-                    {/* Merging road */}
-                    <Path
-                        d="M 35 35 Q 55 55, 75 75"
-                        stroke={color}
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                        fill="none"
-                    />
-                    {/* Arrow head */}
-                    <Polygon
-                        points="82,75 70,65 73,70 75,68 77,70 80,65"
-                        fill={color}
-                    />
-                    {/* Merge indicator dots */}
-                    <Circle cx="45" cy="45" r="3" fill={color} opacity="0.5" />
-                    <Circle cx="55" cy="55" r="3" fill={color} opacity="0.5" />
-                </G>
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// Ramp/Exit arrow component
-export const RampArrow: React.FC<DirectionalArrowProps> = ({
-                                                               direction = 'right',
-                                                               size = 60,
-                                                               color = '#4285F4',
-                                                               animated = false
-                                                           }) => {
-    const isLeft = direction === 'left';
-
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
-
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
-
-                <G transform={isLeft ? 'scale(-1, 1) translate(-120, 0)' : ''}>
-                    {/* Highway */}
-                    <Path
-                        d="M 60 90 L 60 30"
-                        stroke={color}
-                        strokeWidth="8"
-                        strokeLinecap="round"
-                        opacity="0.5"
-                    />
-                    {/* Exit ramp */}
-                    <Path
-                        d="M 60 70 Q 70 60, 85 45"
-                        stroke={color}
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                        fill="none"
-                    />
-                    {/* Arrow head */}
-                    <Polygon
-                        points="90,40 78,45 82,48 80,52 88,47"
-                        fill={color}
-                    />
-                    {/* Exit indicator */}
-                    <Path
-                        d="M 45 70 L 50 70"
-                        stroke={color}
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                        strokeDasharray="2,2"
-                    />
-                </G>
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// Depart/Start arrow component
-export const DepartArrow: React.FC<ArrowProps> = ({
-                                                      size = 60,
-                                                      color = '#34A853',
-                                                      animated = true
-                                                  }) => {
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
-
-                {/* Background circle */}
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
-
-                {/* Inner circle */}
-                <Circle cx="60" cy="60" r="45" fill={color} opacity="0.1" />
-
-                {/* Play icon (triangle) */}
-                <Polygon
-                    points="48,40 48,80 78,60"
-                    fill={color}
-                />
-
-                {/* Start text */}
-                <Text
-                    x="60"
-                    y="100"
-                    textAnchor="middle"
-                    fill={color}
-                    fontSize="10"
-                    fontWeight="600"
-                >
-                    START
-                </Text>
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// Arrive/Destination arrow component
-export const ArriveArrow: React.FC<ArrowProps> = ({
-                                                      size = 60,
-                                                      color = '#EA4335',
-                                                      animated = true
-                                                  }) => {
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
-
-                {/* Background circle */}
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
-
-                {/* Inner circle */}
-                <Circle cx="60" cy="60" r="45" fill={color} opacity="0.1" />
-
-                {/* Flag pole */}
-                <Path
-                    d="M 50 85 L 50 35"
-                    stroke={color}
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                />
-
-                {/* Flag */}
-                <Path
-                    d="M 50 35 L 80 45 L 80 60 L 50 50 Z"
-                    fill={color}
-                />
-
-                {/* Base */}
-                <Path
-                    d="M 40 85 L 60 85"
-                    stroke={color}
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                />
-
-                {/* Destination text */}
-                <Text
-                    x="60"
-                    y="100"
-                    textAnchor="middle"
-                    fill={color}
-                    fontSize="10"
-                    fontWeight="600"
-                >
-                    ARRIVE
-                </Text>
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// Enhanced turn arrow with better visual design
-export const EnhancedTurnArrow: React.FC<DirectionalArrowProps> = ({
-                                                                       direction = 'right',
-                                                                       size = 60,
-                                                                       color = '#4285F4',
-                                                                       animated = false
-                                                                   }) => {
-    const isLeft = direction === 'left';
-
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
-
-                {/* Background circle */}
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
-
-                <G transform={isLeft ? 'scale(-1, 1) translate(-120, 0)' : ''}>
-                    {/* Curved arrow path */}
-                    <Path
-                        d="M 30 60 Q 30 30, 60 30 L 80 30"
-                        stroke={color}
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                        fill="none"
-                    />
-                    {/* Arrow head with better shape */}
-                    <Polygon
-                        points="85,30 70,22 74,30 70,38"
-                        fill={color}
-                    />
-                    {/* Direction indicator dots */}
-                    <Circle cx="30" cy="75" r="3" fill={color} opacity="0.5" />
-                    <Circle cx="30" cy="85" r="3" fill={color} opacity="0.5" />
-                </G>
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// Slight turn arrow (for minor direction changes)
-export const SlightTurnArrow: React.FC<DirectionalArrowProps> = ({
-                                                                     direction = 'right',
-                                                                     size = 60,
-                                                                     color = '#4285F4',
-                                                                     animated = false
-                                                                 }) => {
-    const isLeft = direction === 'left';
-
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
-
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
-
-                <G transform={isLeft ? 'scale(-1, 1) translate(-120, 0)' : ''}>
-                    {/* Slight curve */}
-                    <Path
-                        d="M 40 80 Q 60 60, 80 40"
-                        stroke={color}
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                        fill="none"
-                    />
-                    {/* Arrow head */}
-                    <Polygon
-                        points="85,35 72,42 76,42 76,40 80,44"
-                        fill={color}
-                    />
-                </G>
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// Sharp turn arrow
-export const SharpTurnArrow: React.FC<DirectionalArrowProps> = ({
-                                                                    direction = 'right',
-                                                                    size = 60,
-                                                                    color = '#FF6B00',
-                                                                    animated = false
-                                                                }) => {
-    const isLeft = direction === 'left';
-
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
-
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
-
-                <G transform={isLeft ? 'scale(-1, 1) translate(-120, 0)' : ''}>
-                    {/* Sharp angle */}
-                    <Path
-                        d="M 30 80 L 30 40 L 70 40"
-                        stroke={color}
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        fill="none"
-                    />
-                    {/* Arrow head */}
-                    <Polygon
-                        points="75,40 60,32 64,40 60,48"
-                        fill={color}
-                    />
-                    {/* Warning indicator */}
-                    <Circle cx="50" cy="60" r="4" fill={color} />
-                </G>
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// Fork/Keep arrow (for highway splits)
-export const ForkArrow: React.FC<DirectionalArrowProps> = ({
-                                                               direction = 'right',
-                                                               size = 60,
-                                                               color = '#4285F4',
-                                                               animated = false
-                                                           }) => {
-    const isLeft = direction === 'left';
-
-    return (
-        <ArrowContainer size={size} animated={animated}>
-            <Svg width={size} height={size} viewBox="0 0 120 120">
-                <Defs>
-                    <Filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <FeDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
-                    </Filter>
-                </Defs>
-
-                <Circle cx="60" cy="60" r="55" fill="white" filter="url(#shadow)" />
-
-                <G transform={isLeft ? 'scale(-1, 1) translate(-120, 0)' : ''}>
-                    {/* Main road */}
-                    <Path
-                        d="M 60 90 L 60 30"
-                        stroke={color}
-                        strokeWidth="8"
-                        strokeLinecap="round"
-                        opacity="0.5"
-                    />
-                    {/* Fork road */}
-                    <Path
-                        d="M 60 60 L 85 35"
-                        stroke={color}
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                    />
-                    {/* Arrow head */}
-                    <Polygon
-                        points="90,30 77,37 81,37 81,35 85,39"
-                        fill={color}
-                    />
-                </G>
-            </Svg>
-        </ArrowContainer>
-    );
-};
-
-// Enhanced navigation arrow selector with more maneuver types
-export const EnhancedNavigationArrow: React.FC<NavigationArrowProps> = ({
-                                                                            type,
-                                                                            modifier,
-                                                                            size = 60,
-                                                                            color,
-                                                                            animated = false
-                                                                        }) => {
-    // Determine arrow color if not provided
-    const arrowColor = color || '#4285F4';
-
-    // More detailed maneuver type handling
-    switch (type) {
-        case 'turn':
-            if (modifier === 'sharp left' || modifier === 'sharp right') {
-                return <SharpTurnArrow direction={modifier.includes('left') ? 'left' : 'right'} size={size} color={arrowColor} animated={animated} />;
-            } else if (modifier === 'slight left' || modifier === 'slight right') {
-                return <SlightTurnArrow direction={modifier.includes('left') ? 'left' : 'right'} size={size} color={arrowColor} animated={animated} />;
-            } else if (modifier === 'left' || modifier === 'right') {
-                return <EnhancedTurnArrow direction={modifier} size={size} color={arrowColor} animated={animated} />;
-            } else if (modifier === 'uturn') {
-                return <UTurnArrow direction="left" size={size} color={arrowColor} animated={animated} />;
-            }
-            break;
-
-        case 'fork':
-            return <ForkArrow direction={modifier === 'left' ? 'left' : 'right'} size={size} color={arrowColor} animated={animated} />;
-
-        case 'merge':
-            return <MergeArrow direction={modifier === 'left' ? 'left' : 'right'} size={size} color={arrowColor} animated={animated} />;
-
-        case 'ramp':
-            return <RampArrow direction={modifier === 'left' ? 'left' : 'right'} size={size} color={arrowColor} animated={animated} />;
-
-        case 'roundabout':
-            const exitMatch = modifier?.match(/exit-(\d+)/);
-            const exit = exitMatch ? parseInt(exitMatch[1]) : 1;
-            return <RoundaboutArrow exit={exit} size={size} color={arrowColor} animated={animated} />;
-
-        case 'depart':
-            return <DepartArrow size={size} color={arrowColor} animated={animated} />;
-
-        case 'arrive':
-            return <ArriveArrow size={size} color={arrowColor} animated={animated} />;
-
-        case 'continue':
-        case 'straight':
-        default:
-            return <StraightArrow size={size} color={arrowColor} animated={animated} />;
+    if (!arrowGeometry) {
+        return null;
     }
 
-    // Default fallback
-    return <StraightArrow size={size} color={arrowColor} animated={animated} />;
+    const arrowConfig = getArrowConfig(maneuverPoint.type, maneuverPoint.modifier);
+    const arrowColor = color || arrowConfig.color;
+    const finalWidth = arrowWidth || arrowConfig.width;
+    const sourceId = `arrow-source-${uniqueKey}`;
+
+    return (
+        <>
+            {/* Arrow outline for better visibility */}
+            {arrowGeometry.outline && (
+                <Mapbox.ShapeSource
+                    id={`${sourceId}-outline`}
+                    shape={arrowGeometry.outline}
+                >
+                    <Mapbox.LineLayer
+                        id={`${sourceId}-outline-layer`}
+                        style={{
+                            lineColor: 'white',
+                            lineWidth: finalWidth + 4,
+                            lineCap: 'round',
+                            lineJoin: 'round',
+                            lineOpacity: opacity * 0.9
+                        }}
+                    />
+                </Mapbox.ShapeSource>
+            )}
+
+            {/* Arrow shaft */}
+            <Mapbox.ShapeSource
+                id={`${sourceId}-shaft`}
+                shape={arrowGeometry.shaft}
+            >
+                <Mapbox.LineLayer
+                    id={`${sourceId}-shaft-layer`}
+                    style={{
+                        lineColor: arrowColor,
+                        lineWidth: finalWidth,
+                        lineCap: 'round',
+                        lineJoin: 'round',
+                        lineOpacity: opacity
+                    }}
+                />
+            </Mapbox.ShapeSource>
+
+            {/* Arrow head */}
+            {arrowGeometry.head.map((headLine, index) => (
+                <Mapbox.ShapeSource
+                    key={`${sourceId}-head-${index}`}
+                    id={`${sourceId}-head-${index}`}
+                    shape={headLine}
+                >
+                    <Mapbox.LineLayer
+                        id={`${sourceId}-head-layer-${index}`}
+                        style={{
+                            lineColor: arrowColor,
+                            lineWidth: finalWidth,
+                            lineCap: 'round',
+                            lineJoin: 'round',
+                            lineOpacity: opacity
+                        }}
+                    />
+                </Mapbox.ShapeSource>
+            ))}
+        </>
+    );
 };
+
+/**
+ * Container component for multiple road-fitted arrows
+ */
+interface RoadFittedArrowsProps {
+    routeGeoJSON: Feature | null;
+    maneuverPoints: Array<{
+        coordinate: [number, number];
+        type: string;
+        modifier?: string;
+        instruction: string;
+        distance?: number;
+    }>;
+    currentPosition?: { latitude: number; longitude: number } | null; // Accept both undefined and null
+    showUpcoming?: number; // Number of upcoming arrows to show
+    maxDistance?: number; // Maximum distance to show arrows (meters)
+}
+
+// Type for enriched maneuver point with calculated distance
+type EnrichedManeuverPoint = {
+    coordinate: [number, number];
+    type: string;
+    modifier?: string;
+    instruction: string;
+    distance?: number;
+    uniqueIndex: number;
+    calculatedDistance?: number;
+};
+
+export const RoadFittedArrows: React.FC<RoadFittedArrowsProps> = ({
+                                                                      routeGeoJSON,
+                                                                      maneuverPoints,
+                                                                      currentPosition,
+                                                                      showUpcoming = 8, // Show more arrows by default
+                                                                      maxDistance = 2000 // Show arrows within 2km by default
+                                                                  }) => {
+    const visibleArrows = useMemo((): EnrichedManeuverPoint[] => {
+        // Add unique indices to all points
+        const indexedPoints: EnrichedManeuverPoint[] = maneuverPoints.map((point, index) => ({
+            ...point,
+            uniqueIndex: index
+        }));
+
+        console.log(`Total maneuver points: ${maneuverPoints.length}, showUpcoming: ${showUpcoming}`);
+
+        if (!currentPosition) {
+            // If no current position, show first N arrows
+            const numToShow = Math.min(showUpcoming, indexedPoints.length);
+            const arrows = indexedPoints.slice(0, numToShow);
+            console.log(`No current position, showing first ${arrows.length} arrows (requested: ${showUpcoming})`);
+            return arrows;
+        }
+
+        // Calculate distances and filter by proximity
+        const userPoint = turf.point([currentPosition.longitude, currentPosition.latitude]);
+
+        const pointsWithDistance = indexedPoints.map(point => {
+            const maneuverPoint = turf.point(point.coordinate);
+            const calculatedDistance = turf.distance(userPoint, maneuverPoint, { units: 'meters' });
+            return {
+                ...point,
+                calculatedDistance
+            };
+        });
+
+        // Sort by distance and filter
+        const filteredArrows = pointsWithDistance
+            .filter(point => point.calculatedDistance! < maxDistance)
+            .sort((a, b) => a.calculatedDistance! - b.calculatedDistance!)
+            .slice(0, showUpcoming);
+
+        console.log(`Showing ${filteredArrows.length} arrows within ${maxDistance}m (closest: ${filteredArrows[0]?.calculatedDistance?.toFixed(0)}m)`);
+
+        return filteredArrows;
+    }, [maneuverPoints, currentPosition, showUpcoming, maxDistance]);
+
+    // If no route or no visible arrows, return null
+    if (!routeGeoJSON || visibleArrows.length === 0) {
+        console.log('No arrows to render');
+        return null;
+    }
+
+    return (
+        <>
+            {visibleArrows.map((point, idx) => {
+                // Determine opacity based on position in list and distance
+                const distance = point.calculatedDistance ?? point.distance;
+                let opacity = 1.0;
+
+                if (distance !== undefined) {
+                    if (distance > 1000) {
+                        opacity = 0.3; // Very far arrows
+                    } else if (distance > 500) {
+                        opacity = 0.5; // Far arrows
+                    } else if (distance > 200) {
+                        opacity = 0.7; // Medium distance
+                    } else if (distance > 100) {
+                        opacity = 0.85; // Approaching
+                    }
+                } else {
+                    // Fallback opacity based on order
+                    opacity = Math.max(0.3, 1.0 - (idx * 0.1));
+                }
+
+                // Color based on urgency/distance
+                let color: string | undefined;
+                if (distance !== undefined) {
+                    if (idx === 0 && distance < 50) {
+                        color = '#EA4335'; // Red for immediate action
+                    } else if (idx === 0 && distance < 150) {
+                        color = '#FF6B00'; // Orange for soon
+                    } else if (idx === 1 && distance < 300) {
+                        color = '#FBBC04'; // Yellow for next
+                    }
+                }
+
+                return (
+                    <RoadFittedArrow
+                        key={`road-arrow-${point.uniqueIndex}-${point.coordinate[0].toFixed(6)}-${point.coordinate[1].toFixed(6)}`}
+                        routeGeoJSON={routeGeoJSON}
+                        maneuverPoint={point}
+                        uniqueKey={`${point.uniqueIndex}-${idx}`}
+                        color={color}
+                        opacity={opacity}
+                        arrowLength={50}
+                        arrowWidth={12} // Even wider for better visibility
+                    />
+                );
+            })}
+        </>
+    );
+};
+
+export default RoadFittedArrows;
