@@ -11,7 +11,7 @@ interface RoadFittedArrowProps {
         type: string;
         modifier?: string;
         instruction: string;
-        index?: number;
+        uniqueIndex?: number;
     };
     uniqueKey: string | number; // Required unique key for the arrow
     arrowLength?: number; // Length of arrow in meters
@@ -55,7 +55,7 @@ function extractRouteSegmentForArrow(
         }
 
         // If maneuver point is too far from route, skip
-        if (minDist > 50) { // More than 50m away from route
+        if (minDist > 100) { // Increased tolerance
             console.warn(`Maneuver point too far from route: ${minDist.toFixed(0)}m`);
             return [];
         }
@@ -96,7 +96,7 @@ function extractRouteSegmentForArrow(
         );
 
         // Only add maneuver point if it's close enough to the route
-        if (lastDist < 10 && lastDist > 0.1) {
+        if (lastDist < 20 && lastDist > 0.1) {
             segment.push(maneuverCoord);
         }
 
@@ -356,6 +356,26 @@ function createArrowHead(
         headLines.push(
             turf.lineString([wing.geometry.coordinates, lastPoint])
         );
+    } else {
+        // Default arrow head (straight/continue)
+        const leftWing = turf.destination(
+            turf.point(lastPoint),
+            headSize / 1000,
+            bearing - 150,
+            { units: 'kilometers' }
+        );
+
+        const rightWing = turf.destination(
+            turf.point(lastPoint),
+            headSize / 1000,
+            bearing + 150,
+            { units: 'kilometers' }
+        );
+
+        headLines.push(
+            turf.lineString([leftWing.geometry.coordinates, lastPoint]),
+            turf.lineString([rightWing.geometry.coordinates, lastPoint])
+        );
     }
 
     return headLines;
@@ -384,8 +404,8 @@ export const RoadFittedArrow: React.FC<RoadFittedArrowProps> = ({
                                                                     routeGeoJSON,
                                                                     maneuverPoint,
                                                                     uniqueKey,
-                                                                    arrowLength = 50, // Increased default length
-                                                                    arrowWidth = 10,  // Increased default width
+                                                                    arrowLength = 50,
+                                                                    arrowWidth = 12,
                                                                     color,
                                                                     opacity = 1.0
                                                                 }) => {
@@ -488,136 +508,4 @@ export const RoadFittedArrow: React.FC<RoadFittedArrowProps> = ({
     );
 };
 
-/**
- * Container component for multiple road-fitted arrows
- */
-interface RoadFittedArrowsProps {
-    routeGeoJSON: Feature | null;
-    maneuverPoints: Array<{
-        coordinate: [number, number];
-        type: string;
-        modifier?: string;
-        instruction: string;
-        distance?: number;
-    }>;
-    currentPosition?: { latitude: number; longitude: number } | null; // Accept both undefined and null
-    showUpcoming?: number; // Number of upcoming arrows to show
-    maxDistance?: number; // Maximum distance to show arrows (meters)
-}
-
-// Type for enriched maneuver point with calculated distance
-type EnrichedManeuverPoint = {
-    coordinate: [number, number];
-    type: string;
-    modifier?: string;
-    instruction: string;
-    distance?: number;
-    uniqueIndex: number;
-    calculatedDistance?: number;
-};
-
-export const RoadFittedArrows: React.FC<RoadFittedArrowsProps> = ({
-                                                                      routeGeoJSON,
-                                                                      maneuverPoints,
-                                                                      currentPosition,
-                                                                      showUpcoming = 8, // Show more arrows by default
-                                                                      maxDistance = 2000 // Show arrows within 2km by default
-                                                                  }) => {
-    const visibleArrows = useMemo((): EnrichedManeuverPoint[] => {
-        // Add unique indices to all points
-        const indexedPoints: EnrichedManeuverPoint[] = maneuverPoints.map((point, index) => ({
-            ...point,
-            uniqueIndex: index
-        }));
-
-        console.log(`Total maneuver points: ${maneuverPoints.length}, showUpcoming: ${showUpcoming}`);
-
-        if (!currentPosition) {
-            // If no current position, show first N arrows
-            const numToShow = Math.min(showUpcoming, indexedPoints.length);
-            const arrows = indexedPoints.slice(0, numToShow);
-            console.log(`No current position, showing first ${arrows.length} arrows (requested: ${showUpcoming})`);
-            return arrows;
-        }
-
-        // Calculate distances and filter by proximity
-        const userPoint = turf.point([currentPosition.longitude, currentPosition.latitude]);
-
-        const pointsWithDistance = indexedPoints.map(point => {
-            const maneuverPoint = turf.point(point.coordinate);
-            const calculatedDistance = turf.distance(userPoint, maneuverPoint, { units: 'meters' });
-            return {
-                ...point,
-                calculatedDistance
-            };
-        });
-
-        // Sort by distance and filter
-        const filteredArrows = pointsWithDistance
-            .filter(point => point.calculatedDistance! < maxDistance)
-            .sort((a, b) => a.calculatedDistance! - b.calculatedDistance!)
-            .slice(0, showUpcoming);
-
-        console.log(`Showing ${filteredArrows.length} arrows within ${maxDistance}m (closest: ${filteredArrows[0]?.calculatedDistance?.toFixed(0)}m)`);
-
-        return filteredArrows;
-    }, [maneuverPoints, currentPosition, showUpcoming, maxDistance]);
-
-    // If no route or no visible arrows, return null
-    if (!routeGeoJSON || visibleArrows.length === 0) {
-        console.log('No arrows to render');
-        return null;
-    }
-
-    return (
-        <>
-            {visibleArrows.map((point, idx) => {
-                // Determine opacity based on position in list and distance
-                const distance = point.calculatedDistance ?? point.distance;
-                let opacity = 1.0;
-
-                if (distance !== undefined) {
-                    if (distance > 1000) {
-                        opacity = 0.3; // Very far arrows
-                    } else if (distance > 500) {
-                        opacity = 0.5; // Far arrows
-                    } else if (distance > 200) {
-                        opacity = 0.7; // Medium distance
-                    } else if (distance > 100) {
-                        opacity = 0.85; // Approaching
-                    }
-                } else {
-                    // Fallback opacity based on order
-                    opacity = Math.max(0.3, 1.0 - (idx * 0.1));
-                }
-
-                // Color based on urgency/distance
-                let color: string | undefined;
-                if (distance !== undefined) {
-                    if (idx === 0 && distance < 50) {
-                        color = '#EA4335'; // Red for immediate action
-                    } else if (idx === 0 && distance < 150) {
-                        color = '#FF6B00'; // Orange for soon
-                    } else if (idx === 1 && distance < 300) {
-                        color = '#FBBC04'; // Yellow for next
-                    }
-                }
-
-                return (
-                    <RoadFittedArrow
-                        key={`road-arrow-${point.uniqueIndex}-${point.coordinate[0].toFixed(6)}-${point.coordinate[1].toFixed(6)}`}
-                        routeGeoJSON={routeGeoJSON}
-                        maneuverPoint={point}
-                        uniqueKey={`${point.uniqueIndex}-${idx}`}
-                        color={color}
-                        opacity={opacity}
-                        arrowLength={50}
-                        arrowWidth={12} // Even wider for better visibility
-                    />
-                );
-            })}
-        </>
-    );
-};
-
-export default RoadFittedArrows;
+export default RoadFittedArrow;

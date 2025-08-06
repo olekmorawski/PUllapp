@@ -4,7 +4,7 @@ import {Feature} from "geojson";
 import Mapbox, {UserTrackingMode} from '@rnmapbox/maps';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
 import { Ionicons } from '@expo/vector-icons';
-import {RoadFittedArrows} from "@/components/NavigationArrow";
+import RoadFittedArrow from "@/components/NavigationArrow";
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
@@ -452,14 +452,12 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     </Mapbox.ShapeSource>
                 )}
 
-                {/* Road-fitted navigation arrows that bend with the road */}
+                {/* Road-fitted navigation arrows using the SAME LOGIC as SVG version */}
                 {routeGeoJSON && maneuverPoints.length > 0 && (
-                    <RoadFittedArrows
+                    <FixedRoadFittedArrows
                         routeGeoJSON={routeGeoJSON}
                         maneuverPoints={maneuverPoints}
                         currentPosition={validDriverLocation}
-                        showUpcoming={100}  // Show up to 8 arrows
-                        maxDistance={10000} // Show arrows within 2km
                     />
                 )}
 
@@ -480,6 +478,80 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         </View>
     );
 });
+
+// NEW: Fixed Road-Fitted Arrows component that uses the same logic as the working SVG version
+interface FixedRoadFittedArrowsProps {
+    routeGeoJSON: Feature | null;
+    maneuverPoints: Array<{
+        coordinate: [number, number];
+        type: string;
+        modifier?: string;
+        instruction: string;
+        distance?: number;
+    }>;
+    currentPosition?: { latitude: number; longitude: number } | null;
+}
+
+const FixedRoadFittedArrows: React.FC<FixedRoadFittedArrowsProps> = ({
+                                                                         routeGeoJSON,
+                                                                         maneuverPoints,
+                                                                         currentPosition
+                                                                     }) => {
+    // Calculate distance to current position for color/animation logic
+    const calculateDistance = (point: [number, number]): number => {
+        if (!currentPosition) return 1000; // Default distance if no position
+
+        const dx = point[0] - currentPosition.longitude;
+        const dy = point[1] - currentPosition.latitude;
+        // Simple distance calculation (not perfect but good enough for coloring)
+        return Math.sqrt(dx * dx + dy * dy) * 111320; // Rough meters conversion
+    };
+
+    // Color logic matching the SVG version
+    const getManeuverColor = (distance: number): string => {
+        if (distance < 50) return '#EA4335'; // Red - immediate
+        if (distance < 200) return '#FF6B00'; // Orange - soon
+        return '#4285F4'; // Blue - upcoming
+    };
+
+    if (!routeGeoJSON || maneuverPoints.length === 0) {
+        return null;
+    }
+
+    // Show ALL maneuver points (same as SVG version), not filtered by distance
+    return (
+        <>
+            {maneuverPoints.map((point, index) => {
+                const distance = calculateDistance(point.coordinate);
+                const isNextManeuver = index === 0;
+                const color = getManeuverColor(distance);
+                const shouldAnimate = isNextManeuver && distance < 100;
+
+                // Opacity based on distance for visual hierarchy
+                let opacity = 1.0;
+                if (distance > 1000) opacity = 0.4;
+                else if (distance > 500) opacity = 0.6;
+                else if (distance > 200) opacity = 0.8;
+
+                return (
+                    <RoadFittedArrow
+                        key={`road-arrow-${index}-${point.coordinate[0].toFixed(6)}-${point.coordinate[1].toFixed(6)}`}
+                        routeGeoJSON={routeGeoJSON}
+                        maneuverPoint={{
+                            ...point,
+                            uniqueIndex: index
+                        }}
+                        uniqueKey={`${index}-${point.coordinate[0].toFixed(6)}-${point.coordinate[1].toFixed(6)}`}
+                        color={color}
+                        opacity={opacity}
+                        arrowLength={shouldAnimate ? 60 : 50} // Longer for next maneuver
+                        arrowWidth={shouldAnimate ? 14 : 12}  // Wider for next maneuver
+                    />
+                );
+            })}
+        </>
+    );
+};
 
 NavigationMapboxMap.displayName = 'NavigationMapboxMap';
 
