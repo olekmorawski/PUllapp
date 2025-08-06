@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Alert, SafeAreaView, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, SafeAreaView, Dimensions, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
+import * as Location from 'expo-location';
 import { useOSRMNavigation } from '@/hooks/useOSRMNavigation';
 import { RideNavigationData } from '@/hooks/useEnhancedDriverNavigation';
 import NavigationMapboxMap, { NavigationMapboxMapRef } from '@/components/NavigationMapboxMap';
@@ -14,6 +15,9 @@ import {
 } from '@/components/NavigationUIComponents';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Navigation phases
+type NavigationPhase = 'to-pickup' | 'to-destination' | 'completed';
 
 // Voice settings
 const VOICE_OPTIONS = {
@@ -59,13 +63,21 @@ const validateParams = (params: any): RideNavigationData | null => {
     }
 };
 
-export default function OSRMDriverNavigationScreen() {
+export default function TwoPhaseDriverNavigationScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
     const mapRef = useRef<NavigationMapboxMapRef>(null);
     const [isMuted, setIsMuted] = useState(false);
     const [showInstructions, setShowInstructions] = useState(true);
     const lastSpokenInstructionRef = useRef<string>('');
+    const [navigationPhase, setNavigationPhase] = useState<NavigationPhase>('to-pickup');
+    const [driverLocation, setDriverLocation] = useState<{
+        latitude: number;
+        longitude: number;
+    } | null>(null);
+    const [locationLoading, setLocationLoading] = useState(true);
+    const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+    const [hasArrivedAtPickup, setHasArrivedAtPickup] = useState(false);
     const [maneuverPoints, setManeuverPoints] = useState<Array<{
         coordinate: [number, number];
         type: string;
@@ -73,10 +85,73 @@ export default function OSRMDriverNavigationScreen() {
         instruction: string;
     }>>([]);
 
-    console.log('🚗 OSRM Driver Navigation Screen loaded with params:', params);
+    console.log('🚗 Two-Phase Driver Navigation Screen loaded with params:', params);
 
     // Validate and extract ride data from params
     const rideData = validateParams(params);
+
+    // Get driver's current location
+    useEffect(() => {
+        (async () => {
+            try {
+                // Request location permissions
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== 'granted') {
+                    Alert.alert(
+                        'Permission Denied',
+                        'Location permission is required for navigation',
+                        [{ text: 'OK', onPress: () => router.back() }]
+                    );
+                    return;
+                }
+
+                // Get initial location
+                const location = await Location.getCurrentPositionAsync({
+                    accuracy: Location.Accuracy.High
+                });
+
+                setDriverLocation({
+                    latitude: location.coords.latitude,
+                    longitude: location.coords.longitude
+                });
+                setLocationLoading(false);
+
+                console.log('📍 Initial driver location:', {
+                    lat: location.coords.latitude,
+                    lng: location.coords.longitude
+                });
+
+                // Start watching location
+                locationSubscription.current = await Location.watchPositionAsync(
+                    {
+                        accuracy: Location.Accuracy.BestForNavigation,
+                        timeInterval: 1000,
+                        distanceInterval: 5
+                    },
+                    (newLocation) => {
+                        setDriverLocation({
+                            latitude: newLocation.coords.latitude,
+                            longitude: newLocation.coords.longitude
+                        });
+                    }
+                );
+            } catch (error) {
+                console.error('❌ Error getting location:', error);
+                setLocationLoading(false);
+                Alert.alert(
+                    'Location Error',
+                    'Unable to get your current location',
+                    [{ text: 'Retry', onPress: () => window.location.reload() }]
+                );
+            }
+        })();
+
+        return () => {
+            if (locationSubscription.current) {
+                locationSubscription.current.remove();
+            }
+        };
+    }, []);
 
     if (!rideData) {
         return (
@@ -141,10 +216,7 @@ export default function OSRMDriverNavigationScreen() {
         }
 
         try {
-            // Stop any ongoing speech
             await Speech.stop();
-
-            // Speak the new instruction
             await Speech.speak(text, VOICE_OPTIONS);
             lastSpokenInstructionRef.current = text;
         } catch (error) {
@@ -152,7 +224,41 @@ export default function OSRMDriverNavigationScreen() {
         }
     }, [isMuted]);
 
-    // Use OSRM navigation hook
+    // Determine current navigation origin and destination based on phase
+    const getCurrentNavigationConfig = () => {
+        if (navigationPhase === 'to-pickup' && driverLocation) {
+            return {
+                origin: {
+                    latitude: driverLocation.latitude,
+                    longitude: driverLocation.longitude
+                },
+                destination: {
+                    latitude: rideData.pickupLat,
+                    longitude: rideData.pickupLng
+                },
+                destinationName: rideData.pickupAddress,
+                phaseMessage: 'Navigating to pickup location'
+            };
+        } else if (navigationPhase === 'to-destination') {
+            return {
+                origin: {
+                    latitude: rideData.pickupLat,
+                    longitude: rideData.pickupLng
+                },
+                destination: {
+                    latitude: rideData.destLat,
+                    longitude: rideData.destLng
+                },
+                destinationName: rideData.destAddress,
+                phaseMessage: 'Navigating to destination'
+            };
+        }
+        return null;
+    };
+
+    const navConfig = getCurrentNavigationConfig();
+
+    // Use OSRM navigation hook with dynamic origin/destination
     const {
         isNavigating,
         isLoading,
@@ -173,26 +279,46 @@ export default function OSRMDriverNavigationScreen() {
         getManeuverIcon,
         navigationService
     } = useOSRMNavigation({
-        origin: {
-            latitude: rideData.pickupLat,
-            longitude: rideData.pickupLng
-        },
-        destination: {
-            latitude: rideData.destLat,
-            longitude: rideData.destLng
-        },
+        origin: navConfig?.origin || { latitude: 0, longitude: 0 },
+        destination: navConfig?.destination || { latitude: 0, longitude: 0 },
+        enabled: !!navConfig && !!driverLocation && !locationLoading,
         onDestinationReached: () => {
-            speakInstruction('You have arrived at your destination');
-            Alert.alert(
-                'Destination Reached! 🎉',
-                `You've arrived at ${rideData.destAddress}`,
-                [
-                    {
-                        text: 'Complete Trip',
-                        onPress: () => router.replace('/(app)')
-                    }
-                ]
-            );
+            if (navigationPhase === 'to-pickup') {
+                // Arrived at pickup
+                speakInstruction('You have arrived at the pickup location. Please wait for passenger confirmation.');
+                setHasArrivedAtPickup(true);
+                stopNavigation();
+
+                Alert.alert(
+                    'Arrived at Pickup! 📍',
+                    `You've arrived at ${rideData.pickupAddress}. Passenger: ${rideData.passengerName}`,
+                    [
+                        {
+                            text: 'Start Trip to Destination',
+                            onPress: () => {
+                                setNavigationPhase('to-destination');
+                                setHasArrivedAtPickup(false);
+                                // Navigation will auto-restart with new destination
+                            }
+                        }
+                    ]
+                );
+            } else if (navigationPhase === 'to-destination') {
+                // Arrived at destination
+                speakInstruction('You have arrived at your destination. Trip completed!');
+                setNavigationPhase('completed');
+
+                Alert.alert(
+                    'Destination Reached! 🎉',
+                    `You've arrived at ${rideData.destAddress}`,
+                    [
+                        {
+                            text: 'Complete Trip',
+                            onPress: () => router.replace('/(app)')
+                        }
+                    ]
+                );
+            }
         },
         onNavigationError: (error) => {
             console.error('🚨 Navigation error:', error);
@@ -227,25 +353,26 @@ export default function OSRMDriverNavigationScreen() {
         }
     }, [route]);
 
-    // Auto-start navigation when component mounts
+    // Auto-start navigation when ready
     useEffect(() => {
-        if (!isNavigating && !isLoading && !error) {
-            console.log('🚀 Auto-starting navigation...');
+        if (!isNavigating && !isLoading && !error && navConfig && !hasArrivedAtPickup && navigationPhase !== 'completed') {
+            console.log('🚀 Auto-starting navigation for phase:', navigationPhase);
             startNavigation();
 
             // Initial voice announcement
             setTimeout(() => {
-                speakInstruction(`Starting navigation to ${rideData.destAddress}`);
+                if (navigationPhase === 'to-pickup') {
+                    speakInstruction(`Starting navigation to pickup location at ${rideData.pickupAddress}`);
+                } else {
+                    speakInstruction(`Starting navigation to destination at ${rideData.destAddress}`);
+                }
             }, 1000);
         }
-    }, []); // Empty dependency array - only run once
+    }, [navigationPhase, navConfig, isNavigating, isLoading, error, hasArrivedAtPickup]);
 
     // Update map camera when position changes
     useEffect(() => {
         if (currentPosition && mapRef.current) {
-            console.log('📍 Updating camera to follow driver at:', currentPosition);
-
-            // Get camera config from OSRM hook
             const cameraConfig = getMapboxCameraConfig();
             if (cameraConfig) {
                 mapRef.current.flyTo(
@@ -279,7 +406,7 @@ export default function OSRMDriverNavigationScreen() {
     const handleBackPress = useCallback(() => {
         Alert.alert(
             'Cancel Navigation',
-            'Are you sure you want to cancel this navigation?',
+            'Are you sure you want to cancel this trip?',
             [
                 { text: 'No', style: 'cancel' },
                 {
@@ -321,7 +448,7 @@ export default function OSRMDriverNavigationScreen() {
     }, []);
 
     // Show loading state
-    if (isLoading) {
+    if (locationLoading || (isLoading && !route)) {
         return (
             <SafeAreaView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
                 <Stack.Screen options={{ headerShown: false }} />
@@ -338,7 +465,7 @@ export default function OSRMDriverNavigationScreen() {
                         shadowRadius: 12,
                         elevation: 8
                     }}>
-                        <Ionicons name="navigate" size={48} color="#4285F4" />
+                        <ActivityIndicator size="large" color="#4285F4" />
                         <Text style={{
                             fontSize: 20,
                             fontWeight: '600',
@@ -346,7 +473,7 @@ export default function OSRMDriverNavigationScreen() {
                             marginTop: 16,
                             marginBottom: 8
                         }}>
-                            Starting Navigation...
+                            {locationLoading ? 'Getting Your Location...' : 'Starting Navigation...'}
                         </Text>
                         <Text style={{
                             fontSize: 16,
@@ -354,7 +481,12 @@ export default function OSRMDriverNavigationScreen() {
                             textAlign: 'center',
                             lineHeight: 22
                         }}>
-                            Calculating the best route to your destination
+                            {locationLoading
+                                ? 'Please wait while we locate you'
+                                : navigationPhase === 'to-pickup'
+                                    ? `Calculating route to pickup at ${rideData.pickupAddress}`
+                                    : `Calculating route to destination at ${rideData.destAddress}`
+                            }
                         </Text>
                     </View>
                 </View>
@@ -363,7 +495,7 @@ export default function OSRMDriverNavigationScreen() {
     }
 
     // Show error state
-    if (error) {
+    if (error && !route) {
         return (
             <SafeAreaView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
                 <Stack.Screen options={{ headerShown: false }} />
@@ -443,10 +575,14 @@ export default function OSRMDriverNavigationScreen() {
             {/* Navigation Map with Route and Maneuver Arrows */}
             <NavigationMapboxMap
                 ref={mapRef}
-                driverLocation={currentPosition}
+                driverLocation={currentPosition || driverLocation}
+                pickup={navigationPhase === 'to-pickup' ? {
+                    latitude: rideData.pickupLat,
+                    longitude: rideData.pickupLng
+                } : undefined}
                 destination={{
-                    latitude: rideData.destLat,
-                    longitude: rideData.destLng
+                    latitude: navConfig?.destination.latitude || rideData.destLat,
+                    longitude: navConfig?.destination.longitude || rideData.destLng
                 }}
                 routeGeoJSON={routeGeoJSON}
                 maneuverPoints={maneuverPoints}
@@ -461,6 +597,50 @@ export default function OSRMDriverNavigationScreen() {
                 mapStyle="mapbox://styles/mapbox/navigation-day-v1"
             />
 
+            {/* Phase Indicator Banner */}
+            <View style={{
+                position: 'absolute',
+                top: 60,
+                left: 20,
+                right: 20,
+                backgroundColor: navigationPhase === 'to-pickup' ? '#4285F4' : '#34A853',
+                borderRadius: 12,
+                padding: 12,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25,
+                shadowRadius: 4,
+                elevation: 5,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+            }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Ionicons
+                        name={navigationPhase === 'to-pickup' ? 'person' : 'location'}
+                        size={24}
+                        color="white"
+                    />
+                    <View style={{ marginLeft: 12, flex: 1 }}>
+                        <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+                            {navigationPhase === 'to-pickup' ? 'Going to Pickup' : 'Going to Destination'}
+                        </Text>
+                        <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                            {navigationPhase === 'to-pickup' ? rideData.pickupAddress : rideData.destAddress}
+                        </Text>
+                    </View>
+                </View>
+                <TouchableOpacity
+                    onPress={handleBackPress}
+                    style={{
+                        backgroundColor: 'rgba(0,0,0,0.2)',
+                        borderRadius: 20,
+                        padding: 8
+                    }}
+                >
+                    <Ionicons name="close" size={20} color="white" />
+                </TouchableOpacity>
+            </View>
 
             {/* Speed Indicator */}
             {currentPosition && (
@@ -489,14 +669,45 @@ export default function OSRMDriverNavigationScreen() {
                 />
             )}
 
+            {/* Passenger Info Card (shown during pickup phase) */}
+            {navigationPhase === 'to-pickup' && (
+                <View style={{
+                    position: 'absolute',
+                    bottom: 200,
+                    left: 20,
+                    right: 20,
+                    backgroundColor: 'white',
+                    borderRadius: 12,
+                    padding: 16,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 4,
+                    elevation: 3
+                }}>
+                    <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                        Picking up
+                    </Text>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#1a1a1a' }}>
+                        {rideData.passengerName}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                        <Ionicons name="cash-outline" size={16} color="#666" />
+                        <Text style={{ fontSize: 14, color: '#666', marginLeft: 6 }}>
+                            Estimated: {rideData.estimatedPrice || 'N/A'}
+                        </Text>
+                    </View>
+                </View>
+            )}
+
             {/* Navigation Controls */}
             <NavigationControls
                 onRecenter={handleRecenter}
                 onVolumeToggle={handleVolumeToggle}
                 onRouteOptions={() => {
                     Alert.alert(
-                        'Route Options',
-                        'Navigation in progress',
+                        'Navigation Phase',
+                        `Currently: ${navigationPhase === 'to-pickup' ? 'Going to pickup location' : 'Going to destination'}`,
                         [{ text: 'OK' }]
                     );
                 }}

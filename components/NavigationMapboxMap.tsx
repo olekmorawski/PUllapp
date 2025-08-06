@@ -1,3 +1,4 @@
+// components/NavigationMapboxMap.tsx - Updated with pickup prop support
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { View, Text, ActivityIndicator, Dimensions, ViewStyle } from 'react-native';
 import {Feature} from "geojson";
@@ -36,6 +37,7 @@ const isValidCoordinateArray = (coords: any): coords is [number, number] => {
 
 interface NavigationMapboxMapProps {
     driverLocation?: { latitude: number; longitude: number } | null;
+    pickup?: { latitude: number; longitude: number } | null;  // ADD THIS LINE
     destination?: { latitude: number; longitude: number } | null;
     routeGeoJSON?: Feature | null;
     maneuverPoints?: Array<{
@@ -70,6 +72,7 @@ export interface NavigationMapboxMapRef {
 
 const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxMapProps>(({
                                                                                               driverLocation,
+                                                                                              pickup,  // ADD THIS PARAMETER
                                                                                               destination,
                                                                                               routeGeoJSON,
                                                                                               maneuverPoints = [],
@@ -98,6 +101,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
 
     // Validate props
     const validDriverLocation = isValidCoordinate(driverLocation) ? driverLocation : null;
+    const validPickup = isValidCoordinate(pickup) ? pickup : null;  // ADD THIS VALIDATION
     const validDestination = isValidCoordinate(destination) ? destination : null;
     const validBearing = isValidNumber(bearing) ? bearing : 0;
     const validPitch = isValidNumber(pitch) ? Math.max(0, Math.min(60, pitch)) : 60;
@@ -332,6 +336,22 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         elevation: 5,
     };
 
+    const pickupMarkerStyle: ViewStyle = {
+        width: 40,
+        height: 40,
+        backgroundColor: '#4285F4',
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 3,
+        borderColor: 'white',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 5,
+    };
+
     // Show error state
     if (mapError) {
         return (
@@ -452,13 +472,25 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     </Mapbox.ShapeSource>
                 )}
 
-                {/* Road-fitted navigation arrows using the SAME LOGIC as SVG version */}
+                {/* Road-fitted navigation arrows */}
                 {routeGeoJSON && maneuverPoints.length > 0 && (
                     <FixedRoadFittedArrows
                         routeGeoJSON={routeGeoJSON}
                         maneuverPoints={maneuverPoints}
                         currentPosition={validDriverLocation}
                     />
+                )}
+
+                {/* Pickup Marker (if provided and different from destination) */}
+                {validPickup && (
+                    <Mapbox.PointAnnotation
+                        id="pickup"
+                        coordinate={[validPickup.longitude, validPickup.latitude]}
+                    >
+                        <View style={pickupMarkerStyle}>
+                            <Ionicons name="person" size={20} color="white" />
+                        </View>
+                    </Mapbox.PointAnnotation>
                 )}
 
                 {/* Destination Marker */}
@@ -479,7 +511,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
     );
 });
 
-// NEW: Fixed Road-Fitted Arrows component that uses the same logic as the working SVG version
+// Fixed Road-Fitted Arrows component
 interface FixedRoadFittedArrowsProps {
     routeGeoJSON: Feature | null;
     maneuverPoints: Array<{

@@ -1,4 +1,4 @@
-// hooks/useOSRMNavigation.ts - Fixed infinite loop
+// hooks/useOSRMNavigation.ts - Fixed with enabled prop support
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     OSRMNavigationService,
@@ -12,6 +12,7 @@ import * as Location from 'expo-location';
 interface UseOSRMNavigationProps {
     origin: NavigationCoordinates;
     destination: NavigationCoordinates;
+    enabled?: boolean; // Add this optional prop to control when navigation can start
     onDestinationReached?: (data: { location: Location.LocationObject }) => void;
     onNavigationError?: (error: Error) => void;
     onNewInstruction?: (instruction: NavigationInstruction) => void;
@@ -57,6 +58,7 @@ export interface UseOSRMNavigationReturn {
 export const useOSRMNavigation = ({
                                       origin,
                                       destination,
+                                      enabled = true, // Default to true for backward compatibility
                                       onDestinationReached,
                                       onNavigationError,
                                       onNewInstruction,
@@ -161,6 +163,12 @@ export const useOSRMNavigation = ({
 
     // Start navigation with retry logic
     const startNavigation = useCallback(async (): Promise<void> => {
+        // Check if navigation is enabled
+        if (!enabled) {
+            console.log('Navigation is disabled');
+            return;
+        }
+
         if (!origin || !destination) {
             const error = new Error('Origin and destination are required');
             setError(error);
@@ -187,7 +195,7 @@ export const useOSRMNavigation = ({
             isStartingRef.current = false;
             console.error('Failed to start navigation:', error);
         }
-    }, [origin, destination, navigationService, isLoading]);
+    }, [origin, destination, navigationService, isLoading, enabled]);
 
     // Retry navigation with exponential backoff
     const retryNavigation = useCallback(async (): Promise<void> => {
