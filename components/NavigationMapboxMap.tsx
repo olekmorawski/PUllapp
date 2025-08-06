@@ -509,9 +509,7 @@ const FixedRoadFittedArrows: React.FC<FixedRoadFittedArrowsProps> = ({
 
     // Color logic matching the SVG version
     const getManeuverColor = (distance: number): string => {
-        if (distance < 50) return '#EA4335'; // Red - immediate
-        if (distance < 200) return '#FF6B00'; // Orange - soon
-        return '#4285F4'; // Blue - upcoming
+        return '#EA4335'; // Always red
     };
 
     if (!routeGeoJSON || maneuverPoints.length === 0) {

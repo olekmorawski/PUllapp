@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
 import * as turf from '@turf/turf';
-import { Feature, LineString, Point, Position } from 'geojson';
+import { Feature, LineString, Point, Position, Polygon } from 'geojson';
 
 interface RoadFittedArrowProps {
     routeGeoJSON: Feature | null;
@@ -13,32 +13,31 @@ interface RoadFittedArrowProps {
         instruction: string;
         uniqueIndex?: number;
     };
-    uniqueKey: string | number; // Required unique key for the arrow
+    uniqueKey: string | number;
     arrowLength?: number; // Length of arrow in meters
     arrowWidth?: number; // Width of arrow in pixels
     color?: string;
     opacity?: number;
 }
 
-interface ArrowGeometry {
+interface CurvedArrowGeometry {
     shaft: Feature<LineString>;
-    head: Feature<LineString>[];
-    outline?: Feature<LineString>;
+    head: Feature<Polygon>;
 }
 
 /**
  * Extracts a segment of the route for arrow placement
- * The arrow should END at the maneuver point, not start there
+ * The arrow should be CENTERED at the maneuver point
  */
 function extractRouteSegmentForArrow(
     routeLine: Position[],
     maneuverCoord: [number, number],
-    arrowLength: number = 50 // Length in meters
+    arrowLength: number = 50
 ): Position[] {
     try {
         const maneuverPoint = turf.point(maneuverCoord);
 
-        // Find the exact index of the maneuver point on the route
+        // Find the closest point on the route
         let closestIdx = -1;
         let minDist = Infinity;
 
@@ -55,128 +54,117 @@ function extractRouteSegmentForArrow(
         }
 
         // If maneuver point is too far from route, skip
-        if (minDist > 100) { // Increased tolerance
+        if (minDist > 100) {
             console.warn(`Maneuver point too far from route: ${minDist.toFixed(0)}m`);
             return [];
         }
 
-        // Calculate how many points we need for the arrow length
-        // The arrow should END at the maneuver point
-        let accumulatedDist = 0;
+        // Calculate segment that's CENTERED at the maneuver point
+        const halfLength = arrowLength * 0.3;
+        let accumulatedDistBefore = 0;
+        let accumulatedDistAfter = 0;
         let startIdx = closestIdx;
+        let endIdx = closestIdx;
 
-        // Walk backwards along the route to find the start point
-        for (let i = closestIdx - 1; i >= 0 && accumulatedDist < arrowLength; i--) {
+        // Walk backwards to find start point (half the arrow length before maneuver)
+        for (let i = closestIdx - 1; i >= 0 && accumulatedDistBefore < halfLength; i--) {
             const segmentDist = turf.distance(
                 turf.point(routeLine[i]),
                 turf.point(routeLine[i + 1]),
                 { units: 'meters' }
             );
-            accumulatedDist += segmentDist;
+            accumulatedDistBefore += segmentDist;
             startIdx = i;
         }
 
-        // Extract the segment from start to maneuver point
-        const segment = routeLine.slice(startIdx, closestIdx + 1);
-
-        // Ensure we have enough points for a visible arrow
-        if (segment.length < 2) {
-            // Try to get more points
-            const expandedStart = Math.max(0, closestIdx - 20);
-            const expandedEnd = Math.min(routeLine.length - 1, closestIdx + 2);
-            return routeLine.slice(expandedStart, expandedEnd + 1);
+        // Walk forwards to find end point (half the arrow length after maneuver)
+        for (let i = closestIdx; i < routeLine.length - 1 && accumulatedDistAfter < halfLength; i++) {
+            const segmentDist = turf.distance(
+                turf.point(routeLine[i]),
+                turf.point(routeLine[i + 1]),
+                { units: 'meters' }
+            );
+            accumulatedDistAfter += segmentDist;
+            endIdx = i + 1;
         }
 
-        // Add the exact maneuver coordinate at the end to ensure precision
-        const lastSegmentPoint = segment[segment.length - 1];
-        const lastDist = turf.distance(
-            turf.point(lastSegmentPoint),
-            maneuverPoint,
-            { units: 'meters' }
-        );
+        // Extract the segment
+        const segment = routeLine.slice(startIdx, endIdx + 1);
 
-        // Only add maneuver point if it's close enough to the route
-        if (lastDist < 20 && lastDist > 0.1) {
-            segment.push(maneuverCoord);
+        // Ensure we have enough points
+        if (segment.length < 2) {
+            const expandedStart = Math.max(0, closestIdx - 10);
+            const expandedEnd = Math.min(routeLine.length - 1, closestIdx + 10);
+            return routeLine.slice(expandedStart, expandedEnd + 1);
         }
 
         return segment;
     } catch (error) {
-        console.warn('Error extracting route segment for arrow:', error);
+        console.warn('Error extracting route segment:', error);
         return [];
     }
 }
 
 /**
- * Creates a curved arrow geometry that follows the road
+ * Creates a simple curved arrow that follows the road
+ * Line follows the curve, triangle head at the end
  */
 function createCurvedArrowGeometry(
     routeSegment: Position[],
     maneuverType: string,
     modifier?: string
-): ArrowGeometry | null {
+): CurvedArrowGeometry | null {
     if (!routeSegment || routeSegment.length < 2) {
-        console.warn('Route segment too short for arrow:', routeSegment?.length);
         return null;
     }
 
     try {
-        const line = turf.lineString(routeSegment);
-        const lineLength = turf.length(line, { units: 'meters' });
+        // Create the curved shaft that follows the road
+        const shaft = turf.lineString(routeSegment);
 
-        // Determine arrow properties based on maneuver type
-        const arrowConfig = getArrowConfig(maneuverType, modifier);
+        // Get the last two points to determine arrow head direction
+        const lastPoint = routeSegment[routeSegment.length - 1];
+        const secondLastPoint = routeSegment[routeSegment.length - 2];
 
-        // Calculate shaft length based on available line length and config
-        const shaftLength = Math.min(lineLength * 0.8, arrowConfig.maxLength);
-
-        // Ensure minimum arrow length for visibility
-        if (shaftLength < 10) {
-            console.warn('Arrow shaft too short:', shaftLength);
-            // Use the entire segment for very short sections
-            const smoothedShaft = smoothPath(routeSegment);
-            const headGeometry = createArrowHead(
-                smoothedShaft,
-                arrowConfig.headSize,
-                maneuverType,
-                modifier
-            );
-
-            return {
-                shaft: turf.lineString(smoothedShaft),
-                head: headGeometry,
-                outline: createArrowOutline(smoothedShaft, arrowConfig.width)
-            };
-        }
-
-        // Sample points along the line for smooth arrow shaft
-        const numSamples = Math.max(5, Math.floor(shaftLength / 5)); // Sample every 5 meters
-
-        const shaftPoints: Position[] = [];
-        for (let i = 0; i <= numSamples; i++) {
-            const distance = (i / numSamples) * shaftLength;
-            const point = turf.along(line, distance, { units: 'meters' });
-            shaftPoints.push(point.geometry.coordinates);
-        }
-
-        // Smooth the shaft using bezier curve if needed
-        const smoothedShaft = smoothPath(shaftPoints);
-
-        // Create arrow head at the end of the shaft
-        const headGeometry = createArrowHead(
-            smoothedShaft,
-            arrowConfig.headSize,
-            maneuverType,
-            modifier
+        // Calculate bearing for arrow head
+        const bearing = turf.bearing(
+            turf.point(secondLastPoint),
+            turf.point(lastPoint)
         );
 
-        return {
-            shaft: turf.lineString(smoothedShaft),
-            head: headGeometry,
-            outline: createArrowOutline(smoothedShaft, arrowConfig.width)
-        };
+        // Create simple triangle head
+        const headSize = 15; // Size of triangle in meters
+        const headSizeKm = headSize / 1000;
+
+        // Triangle tip is at the end of the shaft
+        const tipPoint = lastPoint;
+
+        // Create triangle base points
+        const leftBase = turf.destination(
+            turf.point(tipPoint),
+            headSizeKm * 0.7,
+            bearing - 150,
+            { units: 'kilometers' }
+        );
+
+        const rightBase = turf.destination(
+            turf.point(tipPoint),
+            headSizeKm * 0.7,
+            bearing + 150,
+            { units: 'kilometers' }
+        );
+
+        // Create triangle polygon
+        const head = turf.polygon([[
+            tipPoint,
+            leftBase.geometry.coordinates,
+            rightBase.geometry.coordinates,
+            tipPoint // Close the polygon
+        ]]);
+
+        return { shaft, head };
     } catch (error) {
-        console.warn('Error creating curved arrow for', maneuverType, ':', error);
+        console.warn('Error creating curved arrow:', error);
         return null;
     }
 }
@@ -187,69 +175,58 @@ function createCurvedArrowGeometry(
 function getArrowConfig(type: string, modifier?: string) {
     const configs: Record<string, any> = {
         'turn': {
-            maxLength: 50,
-            width: 10,
-            headSize: 15,
-            color: '#4285F4'
+            length: 50,
+            width: 4,
+            color: '#EA4335'  // Red
         },
         'sharp turn': {
-            maxLength: 45,
-            width: 12,
-            headSize: 16,
-            color: '#FF6B00'
+            length: 45,
+            width: 5,
+            color: '#EA4335'  // Red
         },
         'slight turn': {
-            maxLength: 60,
-            width: 8,
-            headSize: 12,
-            color: '#4285F4'
+            length: 60,
+            width: 3,
+            color: '#EA4335'  // Red
         },
         'merge': {
-            maxLength: 70,
-            width: 9,
-            headSize: 13,
-            color: '#FBBC04'
+            length: 70,
+            width: 4,
+            color: '#EA4335'  // Red
         },
         'fork': {
-            maxLength: 55,
-            width: 10,
-            headSize: 14,
-            color: '#4285F4'
+            length: 55,
+            width: 4,
+            color: '#EA4335'  // Red
         },
         'roundabout': {
-            maxLength: 50,
-            width: 10,
-            headSize: 14,
-            color: '#4285F4',
-            curved: true
+            length: 50,
+            width: 4,
+            color: '#EA4335'  // Red
         },
         'ramp': {
-            maxLength: 65,
-            width: 10,
-            headSize: 14,
-            color: '#4285F4'
+            length: 65,
+            width: 4,
+            color: '#EA4335'  // Red
         },
         'continue': {
-            maxLength: 80,
-            width: 8,
-            headSize: 12,
-            color: '#34A853'
+            length: 80,
+            width: 3,
+            color: '#EA4335'  // Red
         },
         'depart': {
-            maxLength: 60,
-            width: 10,
-            headSize: 14,
-            color: '#34A853'
+            length: 60,
+            width: 4,
+            color: '#EA4335'  // Red
         },
         'arrive': {
-            maxLength: 50,
-            width: 10,
-            headSize: 14,
-            color: '#EA4335'
+            length: 50,
+            width: 4,
+            color: '#EA4335'  // Red
         }
     };
 
-    // Check for sharp modifier
+    // Check for modifiers
     if (modifier?.includes('sharp')) {
         return configs['sharp turn'];
     }
@@ -257,155 +234,23 @@ function getArrowConfig(type: string, modifier?: string) {
         return configs['slight turn'];
     }
 
-    // Default configuration
-    const defaultConfig = configs[type] || {
-        maxLength: 50,
-        width: 10,
-        headSize: 14,
-        color: '#4285F4'
+    return configs[type] || {
+        length: 50,
+        width: 4,
+        color: '#EA4335'  // Red
     };
-
-    return defaultConfig;
 }
 
 /**
- * Smooth path using quadratic bezier interpolation
- */
-function smoothPath(points: Position[]): Position[] {
-    if (points.length <= 2) return points;
-
-    const smoothed: Position[] = [points[0]];
-
-    for (let i = 1; i < points.length - 1; i++) {
-        const prev = points[i - 1];
-        const curr = points[i];
-        const next = points[i + 1];
-
-        // Add current point
-        smoothed.push(curr);
-
-        // Add interpolated point for smoothing
-        if (i < points.length - 2) {
-            const midPoint: Position = [
-                (curr[0] + next[0]) / 2,
-                (curr[1] + next[1]) / 2
-            ];
-            smoothed.push(midPoint);
-        }
-    }
-
-    smoothed.push(points[points.length - 1]);
-    return smoothed;
-}
-
-/**
- * Create arrow head geometry
- */
-function createArrowHead(
-    shaftPoints: Position[],
-    headSize: number,
-    maneuverType: string,
-    modifier?: string
-): Feature<LineString>[] {
-    if (shaftPoints.length < 2) return [];
-
-    const lastPoint = shaftPoints[shaftPoints.length - 1];
-    const secondLastPoint = shaftPoints[shaftPoints.length - 2];
-
-    // Calculate direction
-    const bearing = turf.bearing(
-        turf.point(secondLastPoint),
-        turf.point(lastPoint)
-    );
-
-    // Create arrow head based on maneuver type
-    const headLines: Feature<LineString>[] = [];
-
-    if (maneuverType === 'turn' || maneuverType === 'fork') {
-        // Create V-shaped arrow head
-        const leftWing = turf.destination(
-            turf.point(lastPoint),
-            headSize / 1000, // Convert to km
-            bearing - 150,
-            { units: 'kilometers' }
-        );
-
-        const rightWing = turf.destination(
-            turf.point(lastPoint),
-            headSize / 1000,
-            bearing + 150,
-            { units: 'kilometers' }
-        );
-
-        headLines.push(
-            turf.lineString([leftWing.geometry.coordinates, lastPoint]),
-            turf.lineString([rightWing.geometry.coordinates, lastPoint])
-        );
-    } else if (maneuverType === 'merge') {
-        // Create merge-style arrow head
-        const side = modifier === 'left' ? -1 : 1;
-        const wingAngle = 135 * side;
-
-        const wing = turf.destination(
-            turf.point(lastPoint),
-            headSize / 1000,
-            bearing + wingAngle,
-            { units: 'kilometers' }
-        );
-
-        headLines.push(
-            turf.lineString([wing.geometry.coordinates, lastPoint])
-        );
-    } else {
-        // Default arrow head (straight/continue)
-        const leftWing = turf.destination(
-            turf.point(lastPoint),
-            headSize / 1000,
-            bearing - 150,
-            { units: 'kilometers' }
-        );
-
-        const rightWing = turf.destination(
-            turf.point(lastPoint),
-            headSize / 1000,
-            bearing + 150,
-            { units: 'kilometers' }
-        );
-
-        headLines.push(
-            turf.lineString([leftWing.geometry.coordinates, lastPoint]),
-            turf.lineString([rightWing.geometry.coordinates, lastPoint])
-        );
-    }
-
-    return headLines;
-}
-
-/**
- * Create arrow outline for better visibility
- */
-function createArrowOutline(points: Position[], width: number): Feature<LineString> | undefined {
-    if (points.length < 2) return undefined;
-
-    try {
-        // Create a buffer around the line for outline effect
-        const line = turf.lineString(points);
-        return line;
-    } catch (error) {
-        console.warn('Error creating arrow outline:', error);
-        return undefined;
-    }
-}
-
-/**
- * Road-fitted arrow component that bends with the road
+ * Road-fitted arrow component with simple visual style
+ * Curves with the road but uses simple line + triangle design
  */
 export const RoadFittedArrow: React.FC<RoadFittedArrowProps> = ({
                                                                     routeGeoJSON,
                                                                     maneuverPoint,
                                                                     uniqueKey,
-                                                                    arrowLength = 50,
-                                                                    arrowWidth = 12,
+                                                                    arrowLength,
+                                                                    arrowWidth,
                                                                     color,
                                                                     opacity = 1.0
                                                                 }) => {
@@ -416,10 +261,16 @@ export const RoadFittedArrow: React.FC<RoadFittedArrowProps> = ({
         }
 
         const routeCoords = routeGeoJSON.geometry.coordinates;
+
+        // Get arrow configuration
+        const config = getArrowConfig(maneuverPoint.type, maneuverPoint.modifier);
+        const finalLength = arrowLength || config.length;
+
+        // Extract segment centered at maneuver point
         const segment = extractRouteSegmentForArrow(
             routeCoords,
             maneuverPoint.coordinate,
-            arrowLength
+            finalLength
         );
 
         if (segment.length === 0) {
@@ -427,12 +278,15 @@ export const RoadFittedArrow: React.FC<RoadFittedArrowProps> = ({
             return null;
         }
 
-        const geometry = createCurvedArrowGeometry(segment, maneuverPoint.type, maneuverPoint.modifier);
+        // Create curved arrow that follows the road
+        const geometry = createCurvedArrowGeometry(
+            segment,
+            maneuverPoint.type,
+            maneuverPoint.modifier
+        );
 
         if (!geometry) {
-            console.warn(`Failed to create arrow geometry for maneuver ${maneuverPoint.type} at`, maneuverPoint.coordinate);
-        } else {
-            console.log(`Created arrow for ${maneuverPoint.type} at`, maneuverPoint.coordinate);
+            console.warn(`Failed to create arrow for ${maneuverPoint.type} at`, maneuverPoint.coordinate);
         }
 
         return geometry;
@@ -449,26 +303,24 @@ export const RoadFittedArrow: React.FC<RoadFittedArrowProps> = ({
 
     return (
         <>
-            {/* Arrow outline for better visibility */}
-            {arrowGeometry.outline && (
-                <Mapbox.ShapeSource
-                    id={`${sourceId}-outline`}
-                    shape={arrowGeometry.outline}
-                >
-                    <Mapbox.LineLayer
-                        id={`${sourceId}-outline-layer`}
-                        style={{
-                            lineColor: 'white',
-                            lineWidth: finalWidth + 4,
-                            lineCap: 'round',
-                            lineJoin: 'round',
-                            lineOpacity: opacity * 0.9
-                        }}
-                    />
-                </Mapbox.ShapeSource>
-            )}
+            {/* White outline for shaft - for better visibility */}
+            <Mapbox.ShapeSource
+                id={`${sourceId}-shaft-outline`}
+                shape={arrowGeometry.shaft}
+            >
+                <Mapbox.LineLayer
+                    id={`${sourceId}-shaft-outline-layer`}
+                    style={{
+                        lineColor: 'white',
+                        lineWidth: finalWidth + 3,
+                        lineCap: 'round',
+                        lineJoin: 'round',
+                        lineOpacity: opacity * 0.8
+                    }}
+                />
+            </Mapbox.ShapeSource>
 
-            {/* Arrow shaft */}
+            {/* Arrow shaft (curved line following the road) */}
             <Mapbox.ShapeSource
                 id={`${sourceId}-shaft`}
                 shape={arrowGeometry.shaft}
@@ -485,25 +337,49 @@ export const RoadFittedArrow: React.FC<RoadFittedArrowProps> = ({
                 />
             </Mapbox.ShapeSource>
 
-            {/* Arrow head */}
-            {arrowGeometry.head.map((headLine, index) => (
-                <Mapbox.ShapeSource
-                    key={`${sourceId}-head-${index}`}
-                    id={`${sourceId}-head-${index}`}
-                    shape={headLine}
-                >
-                    <Mapbox.LineLayer
-                        id={`${sourceId}-head-layer-${index}`}
-                        style={{
-                            lineColor: arrowColor,
-                            lineWidth: finalWidth,
-                            lineCap: 'round',
-                            lineJoin: 'round',
-                            lineOpacity: opacity
-                        }}
-                    />
-                </Mapbox.ShapeSource>
-            ))}
+            {/* Arrow head (triangle) - white outline */}
+            <Mapbox.ShapeSource
+                id={`${sourceId}-head-outline`}
+                shape={arrowGeometry.head}
+            >
+                <Mapbox.FillLayer
+                    id={`${sourceId}-head-outline-fill-layer`}
+                    style={{
+                        fillColor: 'white',
+                        fillOpacity: opacity * 0.8
+                    }}
+                />
+                <Mapbox.LineLayer
+                    id={`${sourceId}-head-outline-line-layer`}
+                    style={{
+                        lineColor: 'white',
+                        lineWidth: 3,
+                        lineOpacity: opacity * 0.8
+                    }}
+                />
+            </Mapbox.ShapeSource>
+
+            {/* Arrow head (triangle) - colored fill */}
+            <Mapbox.ShapeSource
+                id={`${sourceId}-head`}
+                shape={arrowGeometry.head}
+            >
+                <Mapbox.FillLayer
+                    id={`${sourceId}-head-fill-layer`}
+                    style={{
+                        fillColor: arrowColor,
+                        fillOpacity: opacity
+                    }}
+                />
+                <Mapbox.LineLayer
+                    id={`${sourceId}-head-line-layer`}
+                    style={{
+                        lineColor: arrowColor,
+                        lineWidth: 1,
+                        lineOpacity: opacity
+                    }}
+                />
+            </Mapbox.ShapeSource>
         </>
     );
 };
