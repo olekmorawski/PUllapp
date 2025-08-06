@@ -16,8 +16,12 @@ import {
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Navigation phases
-type NavigationPhase = 'to-pickup' | 'to-destination' | 'completed';
+// Navigation phases - Added 'at-pickup' and 'at-destination' phases
+type NavigationPhase = 'to-pickup' | 'at-pickup' | 'picking-up' | 'to-destination' | 'at-destination' | 'completed';
+
+// Geofence configuration
+const GEOFENCE_RADIUS_METERS = 500; // 50 meters radius for arrival detection
+const GEOFENCE_CHECK_INTERVAL = 20000; // Check every 2 seconds
 
 // Voice settings
 const VOICE_OPTIONS = {
@@ -63,7 +67,28 @@ const validateParams = (params: any): RideNavigationData | null => {
     }
 };
 
-export default function TwoPhaseDriverNavigationScreen() {
+// Haversine formula to calculate distance between two coordinates
+const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+): number => {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c; // Distance in meters
+};
+
+export default function GeofencedDriverNavigationScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
     const mapRef = useRef<NavigationMapboxMapRef>(null);
@@ -77,7 +102,11 @@ export default function TwoPhaseDriverNavigationScreen() {
     } | null>(null);
     const [locationLoading, setLocationLoading] = useState(true);
     const locationSubscription = useRef<Location.LocationSubscription | null>(null);
-    const [hasArrivedAtPickup, setHasArrivedAtPickup] = useState(false);
+    const geofenceCheckInterval = useRef<NodeJS.Timeout | null>(null);
+    const [isInPickupGeofence, setIsInPickupGeofence] = useState(false);
+    const [isInDestinationGeofence, setIsInDestinationGeofence] = useState(false);
+    const [pickupTimer, setPickupTimer] = useState(0);
+    const pickupTimerInterval = useRef<NodeJS.Timeout | null>(null);
     const [maneuverPoints, setManeuverPoints] = useState<Array<{
         coordinate: [number, number];
         type: string;
@@ -85,7 +114,7 @@ export default function TwoPhaseDriverNavigationScreen() {
         instruction: string;
     }>>([]);
 
-    console.log('🚗 Two-Phase Driver Navigation Screen loaded with params:', params);
+    console.log('🚗 Geofenced Driver Navigation Screen loaded with params:', params);
 
     // Validate and extract ride data from params
     const rideData = validateParams(params);
@@ -149,6 +178,12 @@ export default function TwoPhaseDriverNavigationScreen() {
         return () => {
             if (locationSubscription.current) {
                 locationSubscription.current.remove();
+            }
+            if (geofenceCheckInterval.current) {
+                clearInterval(geofenceCheckInterval.current);
+            }
+            if (pickupTimerInterval.current) {
+                clearInterval(pickupTimerInterval.current);
             }
         };
     }, []);
@@ -224,9 +259,80 @@ export default function TwoPhaseDriverNavigationScreen() {
         }
     }, [isMuted]);
 
+    // Geofence checking logic
+    useEffect(() => {
+        if (!driverLocation || !rideData) return;
+
+        // Check geofences periodically
+        const checkGeofences = () => {
+            // Check pickup geofence (only relevant during 'to-pickup' phase)
+            if (navigationPhase === 'to-pickup') {
+                const distanceToPickup = calculateDistance(
+                    driverLocation.latitude,
+                    driverLocation.longitude,
+                    rideData.pickupLat,
+                    rideData.pickupLng
+                );
+
+                const wasInPickupGeofence = isInPickupGeofence;
+                const nowInPickupGeofence = distanceToPickup <= GEOFENCE_RADIUS_METERS;
+
+                setIsInPickupGeofence(nowInPickupGeofence);
+
+                // Entered pickup geofence
+                if (!wasInPickupGeofence && nowInPickupGeofence) {
+                    console.log('📍 Entered pickup geofence');
+                    setNavigationPhase('at-pickup');
+                    speakInstruction('You have arrived at the pickup location. Waiting for passenger.');
+
+                    // Start pickup timer
+                    let seconds = 0;
+                    pickupTimerInterval.current = setInterval(() => {
+                        seconds++;
+                        setPickupTimer(seconds);
+                    }, 1000);
+                }
+            }
+
+            // Check destination geofence (only relevant during 'to-destination' phase)
+            if (navigationPhase === 'to-destination') {
+                const distanceToDestination = calculateDistance(
+                    driverLocation.latitude,
+                    driverLocation.longitude,
+                    rideData.destLat,
+                    rideData.destLng
+                );
+
+                const wasInDestinationGeofence = isInDestinationGeofence;
+                const nowInDestinationGeofence = distanceToDestination <= GEOFENCE_RADIUS_METERS;
+
+                setIsInDestinationGeofence(nowInDestinationGeofence);
+
+                // Entered destination geofence
+                if (!wasInDestinationGeofence && nowInDestinationGeofence) {
+                    console.log('📍 Entered destination geofence');
+                    setNavigationPhase('at-destination');
+                    speakInstruction('You have arrived at the destination.');
+                }
+            }
+        };
+
+        // Set up periodic geofence checking
+        geofenceCheckInterval.current = setInterval(checkGeofences, GEOFENCE_CHECK_INTERVAL);
+
+        // Initial check
+        checkGeofences();
+
+        return () => {
+            if (geofenceCheckInterval.current) {
+                clearInterval(geofenceCheckInterval.current);
+            }
+        };
+    }, [driverLocation, rideData, navigationPhase, isInPickupGeofence, isInDestinationGeofence, speakInstruction]);
+
     // Determine current navigation origin and destination based on phase
     const getCurrentNavigationConfig = () => {
-        if (navigationPhase === 'to-pickup' && driverLocation) {
+        if ((navigationPhase === 'to-pickup' || navigationPhase === 'at-pickup') && driverLocation) {
             return {
                 origin: {
                     latitude: driverLocation.latitude,
@@ -239,7 +345,7 @@ export default function TwoPhaseDriverNavigationScreen() {
                 destinationName: rideData.pickupAddress,
                 phaseMessage: 'Navigating to pickup location'
             };
-        } else if (navigationPhase === 'to-destination') {
+        } else if (navigationPhase === 'to-destination' || navigationPhase === 'at-destination') {
             return {
                 origin: {
                     latitude: rideData.pickupLat,
@@ -281,44 +387,12 @@ export default function TwoPhaseDriverNavigationScreen() {
     } = useOSRMNavigation({
         origin: navConfig?.origin || { latitude: 0, longitude: 0 },
         destination: navConfig?.destination || { latitude: 0, longitude: 0 },
-        enabled: !!navConfig && !!driverLocation && !locationLoading,
+        enabled: !!navConfig && !!driverLocation && !locationLoading &&
+            navigationPhase !== 'at-pickup' && navigationPhase !== 'at-destination' &&
+            navigationPhase !== 'picking-up' && navigationPhase !== 'completed',
         onDestinationReached: () => {
-            if (navigationPhase === 'to-pickup') {
-                // Arrived at pickup
-                speakInstruction('You have arrived at the pickup location. Please wait for passenger confirmation.');
-                setHasArrivedAtPickup(true);
-                stopNavigation();
-
-                Alert.alert(
-                    'Arrived at Pickup! 📍',
-                    `You've arrived at ${rideData.pickupAddress}. Passenger: ${rideData.passengerName}`,
-                    [
-                        {
-                            text: 'Start Trip to Destination',
-                            onPress: () => {
-                                setNavigationPhase('to-destination');
-                                setHasArrivedAtPickup(false);
-                                // Navigation will auto-restart with new destination
-                            }
-                        }
-                    ]
-                );
-            } else if (navigationPhase === 'to-destination') {
-                // Arrived at destination
-                speakInstruction('You have arrived at your destination. Trip completed!');
-                setNavigationPhase('completed');
-
-                Alert.alert(
-                    'Destination Reached! 🎉',
-                    `You've arrived at ${rideData.destAddress}`,
-                    [
-                        {
-                            text: 'Complete Trip',
-                            onPress: () => router.replace('/(app)')
-                        }
-                    ]
-                );
-            }
+            // Geofencing handles arrival detection now
+            console.log('Navigation destination reached');
         },
         onNavigationError: (error) => {
             console.error('🚨 Navigation error:', error);
@@ -355,7 +429,8 @@ export default function TwoPhaseDriverNavigationScreen() {
 
     // Auto-start navigation when ready
     useEffect(() => {
-        if (!isNavigating && !isLoading && !error && navConfig && !hasArrivedAtPickup && navigationPhase !== 'completed') {
+        if (!isNavigating && !isLoading && !error && navConfig &&
+            (navigationPhase === 'to-pickup' || navigationPhase === 'to-destination')) {
             console.log('🚀 Auto-starting navigation for phase:', navigationPhase);
             startNavigation();
 
@@ -363,12 +438,12 @@ export default function TwoPhaseDriverNavigationScreen() {
             setTimeout(() => {
                 if (navigationPhase === 'to-pickup') {
                     speakInstruction(`Starting navigation to pickup location at ${rideData.pickupAddress}`);
-                } else {
+                } else if (navigationPhase === 'to-destination') {
                     speakInstruction(`Starting navigation to destination at ${rideData.destAddress}`);
                 }
             }, 1000);
         }
-    }, [navigationPhase, navConfig, isNavigating, isLoading, error, hasArrivedAtPickup]);
+    }, [navigationPhase, navConfig, isNavigating, isLoading, error]);
 
     // Update map camera when position changes
     useEffect(() => {
@@ -422,6 +497,38 @@ export default function TwoPhaseDriverNavigationScreen() {
         );
     }, [stopNavigation, router]);
 
+    // Handle passenger pickup confirmation
+    const handlePassengerPickup = useCallback(() => {
+        if (pickupTimerInterval.current) {
+            clearInterval(pickupTimerInterval.current);
+        }
+        setNavigationPhase('picking-up');
+        speakInstruction('Passenger picked up. Starting trip to destination.');
+
+        // Simulate loading passenger and then start navigation to destination
+        setTimeout(() => {
+            setNavigationPhase('to-destination');
+            setPickupTimer(0);
+        }, 2000);
+    }, [speakInstruction]);
+
+    // Handle trip completion
+    const handleTripComplete = useCallback(() => {
+        setNavigationPhase('completed');
+        speakInstruction('Trip completed successfully!');
+
+        Alert.alert(
+            'Trip Completed! 🎉',
+            `Successfully dropped off ${rideData.passengerName} at ${rideData.destAddress}`,
+            [
+                {
+                    text: 'Complete & Rate',
+                    onPress: () => router.replace('/(app)')
+                }
+            ]
+        );
+    }, [rideData, router, speakInstruction]);
+
     // Calculate ETA
     const calculateETA = useCallback(() => {
         if (!progress?.durationRemaining) return '-- --';
@@ -439,6 +546,13 @@ export default function TwoPhaseDriverNavigationScreen() {
             return '-- --';
         }
     }, [progress]);
+
+    // Format timer
+    const formatTimer = (seconds: number): string => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
 
     // Cleanup speech on unmount
     useEffect(() => {
@@ -483,9 +597,7 @@ export default function TwoPhaseDriverNavigationScreen() {
                         }}>
                             {locationLoading
                                 ? 'Please wait while we locate you'
-                                : navigationPhase === 'to-pickup'
-                                    ? `Calculating route to pickup at ${rideData.pickupAddress}`
-                                    : `Calculating route to destination at ${rideData.destAddress}`
+                                : `Calculating route to ${navConfig?.destinationName}`
                             }
                         </Text>
                     </View>
@@ -565,14 +677,368 @@ export default function TwoPhaseDriverNavigationScreen() {
         );
     }
 
+    // Show pickup waiting screen when at pickup location
+    if (navigationPhase === 'at-pickup') {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: '#4285F4' }}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={{ flex: 1 }}>
+                    {/* Map in background */}
+                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                        <NavigationMapboxMap
+                            ref={mapRef}
+                            driverLocation={currentPosition || driverLocation}
+                            pickup={{
+                                latitude: rideData.pickupLat,
+                                longitude: rideData.pickupLng
+                            }}
+                            destination={{
+                                latitude: rideData.destLat,
+                                longitude: rideData.destLng
+                            }}
+                            geofenceAreas={[
+                                {
+                                    center: [rideData.pickupLng, rideData.pickupLat],
+                                    radius: GEOFENCE_RADIUS_METERS,
+                                    color: '#4285F4',
+                                    opacity: 0.3
+                                }
+                            ]}
+                            bearing={currentHeading}
+                            pitch={0}
+                            zoomLevel={17}
+                            followMode="follow"
+                            showUserLocation={true}
+                            enableScrolling={true}
+                            mapStyle="mapbox://styles/mapbox/navigation-day-v1"
+                        />
+                    </View>
+
+                    {/* Overlay content */}
+                    <View style={{
+                        flex: 1,
+                        justifyContent: 'space-between',
+                        paddingTop: 60
+                    }}>
+                        {/* Header */}
+                        <View style={{
+                            backgroundColor: 'white',
+                            marginHorizontal: 20,
+                            borderRadius: 16,
+                            padding: 20,
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: 4 },
+                            shadowOpacity: 0.15,
+                            shadowRadius: 8,
+                            elevation: 6
+                        }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                                <View style={{
+                                    width: 60,
+                                    height: 60,
+                                    borderRadius: 30,
+                                    backgroundColor: '#E8F0FE',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <Ionicons name="time" size={30} color="#4285F4" />
+                                </View>
+                                <View style={{ marginLeft: 16, flex: 1 }}>
+                                    <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                                        Waiting at pickup
+                                    </Text>
+                                    <Text style={{ fontSize: 24, fontWeight: '700', color: '#1a1a1a' }}>
+                                        {formatTimer(pickupTimer)}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={{
+                                borderTopWidth: 1,
+                                borderTopColor: '#f0f0f0',
+                                paddingTop: 16
+                            }}>
+                                <Text style={{ fontSize: 18, fontWeight: '600', color: '#1a1a1a', marginBottom: 8 }}>
+                                    {rideData.passengerName}
+                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                    <Ionicons name="location" size={16} color="#666" />
+                                    <Text style={{ fontSize: 14, color: '#666', marginLeft: 8, flex: 1 }} numberOfLines={2}>
+                                        {rideData.pickupAddress}
+                                    </Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Ionicons name="cash-outline" size={16} color="#666" />
+                                    <Text style={{ fontSize: 14, color: '#666', marginLeft: 8 }}>
+                                        Est. fare: {rideData.estimatedPrice}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* Bottom actions */}
+                        <View style={{
+                            backgroundColor: 'white',
+                            paddingHorizontal: 20,
+                            paddingTop: 20,
+                            paddingBottom: 40,
+                            borderTopLeftRadius: 24,
+                            borderTopRightRadius: 24,
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: -4 },
+                            shadowOpacity: 0.1,
+                            shadowRadius: 8,
+                            elevation: 10
+                        }}>
+                            <TouchableOpacity
+                                onPress={handlePassengerPickup}
+                                style={{
+                                    backgroundColor: '#34A853',
+                                    borderRadius: 12,
+                                    paddingVertical: 18,
+                                    alignItems: 'center',
+                                    marginBottom: 12
+                                }}
+                            >
+                                <Text style={{ color: 'white', fontSize: 18, fontWeight: '600' }}>
+                                    Passenger Picked Up
+                                </Text>
+                            </TouchableOpacity>
+
+                            <View style={{ flexDirection: 'row', gap: 12 }}>
+                                <TouchableOpacity
+                                    style={{
+                                        flex: 1,
+                                        backgroundColor: '#f5f5f5',
+                                        borderRadius: 12,
+                                        paddingVertical: 16,
+                                        alignItems: 'center',
+                                        flexDirection: 'row',
+                                        justifyContent: 'center'
+                                    }}
+                                >
+                                    <Ionicons name="call" size={20} color="#4285F4" />
+                                    <Text style={{ color: '#4285F4', fontSize: 16, fontWeight: '600', marginLeft: 8 }}>
+                                        Call
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={{
+                                        flex: 1,
+                                        backgroundColor: '#f5f5f5',
+                                        borderRadius: 12,
+                                        paddingVertical: 16,
+                                        alignItems: 'center',
+                                        flexDirection: 'row',
+                                        justifyContent: 'center'
+                                    }}
+                                >
+                                    <Ionicons name="chatbubble" size={20} color="#4285F4" />
+                                    <Text style={{ color: '#4285F4', fontSize: 16, fontWeight: '600', marginLeft: 8 }}>
+                                        Message
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <TouchableOpacity
+                                onPress={handleBackPress}
+                                style={{
+                                    marginTop: 12,
+                                    paddingVertical: 12,
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <Text style={{ color: '#EA4335', fontSize: 16, fontWeight: '500' }}>
+                                    Cancel Trip
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    // Show loading screen when picking up passenger
+    if (navigationPhase === 'picking-up') {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: '#34A853' }}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{
+                        backgroundColor: 'white',
+                        borderRadius: 20,
+                        padding: 32,
+                        marginHorizontal: 32,
+                        alignItems: 'center',
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.15,
+                        shadowRadius: 12,
+                        elevation: 8
+                    }}>
+                        <View style={{
+                            width: 80,
+                            height: 80,
+                            borderRadius: 40,
+                            backgroundColor: '#E6F4EA',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginBottom: 20
+                        }}>
+                            <Ionicons name="car" size={40} color="#34A853" />
+                        </View>
+                        <Text style={{
+                            fontSize: 24,
+                            fontWeight: '700',
+                            color: '#1a1a1a',
+                            marginBottom: 8
+                        }}>
+                            Starting Trip
+                        </Text>
+                        <Text style={{
+                            fontSize: 16,
+                            color: '#666',
+                            textAlign: 'center',
+                            lineHeight: 22
+                        }}>
+                            Navigating to {rideData.destAddress}
+                        </Text>
+                        <ActivityIndicator size="large" color="#34A853" style={{ marginTop: 20 }} />
+                    </View>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    // Show arrival at destination screen
+    if (navigationPhase === 'at-destination') {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: '#34A853' }}>
+                <Stack.Screen options={{ headerShown: false }} />
+                <View style={{ flex: 1 }}>
+                    {/* Map in background */}
+                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                        <NavigationMapboxMap
+                            ref={mapRef}
+                            driverLocation={currentPosition || driverLocation}
+                            destination={{
+                                latitude: rideData.destLat,
+                                longitude: rideData.destLng
+                            }}
+                            geofenceAreas={[
+                                {
+                                    center: [rideData.destLng, rideData.destLat],
+                                    radius: GEOFENCE_RADIUS_METERS,
+                                    color: '#34A853',
+                                    opacity: 0.3
+                                }
+                            ]}
+                            bearing={currentHeading}
+                            pitch={0}
+                            zoomLevel={17}
+                            followMode="follow"
+                            showUserLocation={true}
+                            enableScrolling={true}
+                            mapStyle="mapbox://styles/mapbox/navigation-day-v1"
+                        />
+                    </View>
+
+                    {/* Overlay content */}
+                    <View style={{
+                        flex: 1,
+                        justifyContent: 'flex-end'
+                    }}>
+                        <View style={{
+                            backgroundColor: 'white',
+                            paddingHorizontal: 20,
+                            paddingTop: 24,
+                            paddingBottom: 40,
+                            borderTopLeftRadius: 24,
+                            borderTopRightRadius: 24,
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: -4 },
+                            shadowOpacity: 0.1,
+                            shadowRadius: 8,
+                            elevation: 10
+                        }}>
+                            <View style={{ alignItems: 'center', marginBottom: 24 }}>
+                                <View style={{
+                                    width: 80,
+                                    height: 80,
+                                    borderRadius: 40,
+                                    backgroundColor: '#E6F4EA',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginBottom: 16
+                                }}>
+                                    <Ionicons name="checkmark-circle" size={50} color="#34A853" />
+                                </View>
+                                <Text style={{ fontSize: 24, fontWeight: '700', color: '#1a1a1a', marginBottom: 8 }}>
+                                    Arrived at Destination
+                                </Text>
+                                <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
+                                    {rideData.destAddress}
+                                </Text>
+                            </View>
+
+                            <View style={{
+                                backgroundColor: '#f5f5f5',
+                                borderRadius: 12,
+                                padding: 16,
+                                marginBottom: 20
+                            }}>
+                                <Text style={{ fontSize: 14, color: '#666', marginBottom: 8 }}>
+                                    Trip Summary
+                                </Text>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                                    <Text style={{ fontSize: 16, color: '#1a1a1a' }}>
+                                        Passenger
+                                    </Text>
+                                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#1a1a1a' }}>
+                                        {rideData.passengerName}
+                                    </Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                    <Text style={{ fontSize: 16, color: '#1a1a1a' }}>
+                                        Fare
+                                    </Text>
+                                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#34A853' }}>
+                                        {rideData.estimatedPrice}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <TouchableOpacity
+                                onPress={handleTripComplete}
+                                style={{
+                                    backgroundColor: '#34A853',
+                                    borderRadius: 12,
+                                    paddingVertical: 18,
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <Text style={{ color: 'white', fontSize: 18, fontWeight: '600' }}>
+                                    Complete Trip
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     // Get route GeoJSON for display
     const routeGeoJSON = getRouteGeoJSON();
 
+    // Main navigation view
     return (
         <View style={{ flex: 1 }}>
             <Stack.Screen options={{ headerShown: false }} />
 
-            {/* Navigation Map with Route and Maneuver Arrows */}
+            {/* Navigation Map with Route, Maneuver Arrows, and Geofences */}
             <NavigationMapboxMap
                 ref={mapRef}
                 driverLocation={currentPosition || driverLocation}
@@ -586,6 +1052,20 @@ export default function TwoPhaseDriverNavigationScreen() {
                 }}
                 routeGeoJSON={routeGeoJSON}
                 maneuverPoints={maneuverPoints}
+                geofenceAreas={[
+                    {
+                        center: [rideData.pickupLng, rideData.pickupLat],
+                        radius: GEOFENCE_RADIUS_METERS,
+                        color: '#4285F4',
+                        opacity: 0.2
+                    },
+                    {
+                        center: [rideData.destLng, rideData.destLat],
+                        radius: GEOFENCE_RADIUS_METERS,
+                        color: '#34A853',
+                        opacity: 0.2
+                    }
+                ]}
                 bearing={currentHeading}
                 pitch={60}
                 zoomLevel={18}
@@ -643,7 +1123,7 @@ export default function TwoPhaseDriverNavigationScreen() {
             </View>
 
             {/* Speed Indicator */}
-            {currentPosition && (
+            {currentPosition && isNavigating && (
                 <SpeedIndicator
                     speed={currentPosition.speed ? currentPosition.speed * 3.6 : 0} // Convert m/s to km/h
                     speedLimit={50}
@@ -652,15 +1132,17 @@ export default function TwoPhaseDriverNavigationScreen() {
             )}
 
             {/* ETA Card */}
-            <EtaCard
-                arrivalTime={calculateETA()}
-                timeRemaining={formatDuration(progress?.durationRemaining || 0)}
-                distance={formatDistance(progress?.distanceRemaining || 0)}
-                isVisible={isNavigating && progress !== null}
-            />
+            {isNavigating && (
+                <EtaCard
+                    arrivalTime={calculateETA()}
+                    timeRemaining={formatDuration(progress?.durationRemaining || 0)}
+                    distance={formatDistance(progress?.distanceRemaining || 0)}
+                    isVisible={isNavigating && progress !== null}
+                />
+            )}
 
             {/* Navigation Instructions */}
-            {currentInstruction && (
+            {currentInstruction && isNavigating && (
                 <NavigationInstruction
                     instruction={currentInstruction.text || currentInstruction.voiceInstruction || 'Continue straight'}
                     distance={formatDistance(currentInstruction.distance || 0)}
@@ -701,19 +1183,21 @@ export default function TwoPhaseDriverNavigationScreen() {
             )}
 
             {/* Navigation Controls */}
-            <NavigationControls
-                onRecenter={handleRecenter}
-                onVolumeToggle={handleVolumeToggle}
-                onRouteOptions={() => {
-                    Alert.alert(
-                        'Navigation Phase',
-                        `Currently: ${navigationPhase === 'to-pickup' ? 'Going to pickup location' : 'Going to destination'}`,
-                        [{ text: 'OK' }]
-                    );
-                }}
-                isMuted={isMuted}
-                isVisible={isNavigating}
-            />
+            {isNavigating && (
+                <NavigationControls
+                    onRecenter={handleRecenter}
+                    onVolumeToggle={handleVolumeToggle}
+                    onRouteOptions={() => {
+                        Alert.alert(
+                            'Navigation Info',
+                            `Phase: ${navigationPhase}\nIn Pickup Zone: ${isInPickupGeofence}\nIn Destination Zone: ${isInDestinationGeofence}`,
+                            [{ text: 'OK' }]
+                        );
+                    }}
+                    isMuted={isMuted}
+                    isVisible={isNavigating}
+                />
+            )}
         </View>
     );
 }
