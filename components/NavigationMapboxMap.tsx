@@ -4,7 +4,7 @@ import {Feature} from "geojson";
 import Mapbox, {UserTrackingMode} from '@rnmapbox/maps';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants/Tokens';
 import { Ionicons } from '@expo/vector-icons';
-import {EnhancedNavigationArrow} from "@/components/NavigationArrow";
+import RoadFittedArrow from "@/components/NavigationArrow";
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
@@ -43,6 +43,7 @@ interface NavigationMapboxMapProps {
         type: string;
         modifier?: string;
         instruction: string;
+        distance?: number;
     }>;
     bearing?: number;
     pitch?: number;
@@ -94,6 +95,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
     const [mapError, setMapError] = useState<string | null>(null);
     const [lastCameraUpdate, setLastCameraUpdate] = useState<number>(0);
     const [followMode, setFollowMode] = useState<'none' | 'follow' | 'course' | 'compass'>('follow');
+
     // Validate props
     const validDriverLocation = isValidCoordinate(driverLocation) ? driverLocation : null;
     const validDestination = isValidCoordinate(destination) ? destination : null;
@@ -330,22 +332,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         elevation: 5,
     };
 
-    const maneuverArrowStyle: ViewStyle = {
-        width: 50,
-        height: 50,
-        backgroundColor: '#4285F4',
-        borderRadius: 25,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 3,
-        borderColor: 'white',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        elevation: 5,
-    };
-
     // Show error state
     if (mapError) {
         return (
@@ -439,10 +425,10 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                         showsUserHeadingIndicator={true}
                         minDisplacement={1}
                         onUpdate={handleLocationUpdate}
-                    >
-                    </Mapbox.UserLocation>
+                    />
                 )}
 
+                {/* Route layers */}
                 {routeGeoJSON && routeGeoJSON.geometry && (
                     <Mapbox.ShapeSource
                         id="routeSource"
@@ -466,36 +452,14 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     </Mapbox.ShapeSource>
                 )}
 
-                {/* Maneuver arrows at decision points */}
-                {maneuverPoints.map((point, index) => {
-                    // Calculate distance to next maneuver (if available)
-                    const isNextManeuver = index === 0;
-                    const distanceToManeuver = point.distance || 100; // Default distance
-
-                    // Determine arrow color based on distance
-                    const getManeuverColor = (distance: number) => {
-                        if (distance < 50) return '#EA4335'; // Red - immediate
-                        if (distance < 200) return '#FF6B00'; // Orange - soon
-                        return '#4285F4'; // Blue - upcoming
-                    };
-
-                    return (
-                        <Mapbox.PointAnnotation
-                            key={`maneuver_${index}`}
-                            id={`maneuver_${index}`}
-                            coordinate={point.coordinate}
-                        >
-                            <EnhancedNavigationArrow
-                                type={point.type}
-                                modifier={point.modifier}
-                                size={60}
-                                color={getManeuverColor(distanceToManeuver)}
-                                animated={isNextManeuver && distanceToManeuver < 100}
-                            />
-                        </Mapbox.PointAnnotation>
-                    );
-                })}
-
+                {/* Road-fitted navigation arrows using the SAME LOGIC as SVG version */}
+                {routeGeoJSON && maneuverPoints.length > 0 && (
+                    <FixedRoadFittedArrows
+                        routeGeoJSON={routeGeoJSON}
+                        maneuverPoints={maneuverPoints}
+                        currentPosition={validDriverLocation}
+                    />
+                )}
 
                 {/* Destination Marker */}
                 {validDestination && (
@@ -514,6 +478,78 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         </View>
     );
 });
+
+// NEW: Fixed Road-Fitted Arrows component that uses the same logic as the working SVG version
+interface FixedRoadFittedArrowsProps {
+    routeGeoJSON: Feature | null;
+    maneuverPoints: Array<{
+        coordinate: [number, number];
+        type: string;
+        modifier?: string;
+        instruction: string;
+        distance?: number;
+    }>;
+    currentPosition?: { latitude: number; longitude: number } | null;
+}
+
+const FixedRoadFittedArrows: React.FC<FixedRoadFittedArrowsProps> = ({
+                                                                         routeGeoJSON,
+                                                                         maneuverPoints,
+                                                                         currentPosition
+                                                                     }) => {
+    // Calculate distance to current position for color/animation logic
+    const calculateDistance = (point: [number, number]): number => {
+        if (!currentPosition) return 1000; // Default distance if no position
+
+        const dx = point[0] - currentPosition.longitude;
+        const dy = point[1] - currentPosition.latitude;
+        // Simple distance calculation (not perfect but good enough for coloring)
+        return Math.sqrt(dx * dx + dy * dy) * 111320; // Rough meters conversion
+    };
+
+    // Color logic matching the SVG version
+    const getManeuverColor = (distance: number): string => {
+        return '#EA4335'; // Always red
+    };
+
+    if (!routeGeoJSON || maneuverPoints.length === 0) {
+        return null;
+    }
+
+    // Show ALL maneuver points (same as SVG version), not filtered by distance
+    return (
+        <>
+            {maneuverPoints.map((point, index) => {
+                const distance = calculateDistance(point.coordinate);
+                const isNextManeuver = index === 0;
+                const color = getManeuverColor(distance);
+                const shouldAnimate = isNextManeuver && distance < 100;
+
+                // Opacity based on distance for visual hierarchy
+                let opacity = 1.0;
+                if (distance > 1000) opacity = 0.4;
+                else if (distance > 500) opacity = 0.6;
+                else if (distance > 200) opacity = 0.8;
+
+                return (
+                    <RoadFittedArrow
+                        key={`road-arrow-${index}-${point.coordinate[0].toFixed(6)}-${point.coordinate[1].toFixed(6)}`}
+                        routeGeoJSON={routeGeoJSON}
+                        maneuverPoint={{
+                            ...point,
+                            uniqueIndex: index
+                        }}
+                        uniqueKey={`${index}-${point.coordinate[0].toFixed(6)}-${point.coordinate[1].toFixed(6)}`}
+                        color={color}
+                        opacity={opacity}
+                        arrowLength={shouldAnimate ? 60 : 50} // Longer for next maneuver
+                        arrowWidth={shouldAnimate ? 14 : 12}  // Wider for next maneuver
+                    />
+                );
+            })}
+        </>
+    );
+};
 
 NavigationMapboxMap.displayName = 'NavigationMapboxMap';
 
