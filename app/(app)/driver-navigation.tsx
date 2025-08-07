@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import * as Location from 'expo-location';
+import { getDistance } from 'geolib';
 import { useOSRMNavigation } from '@/hooks/useOSRMNavigation';
 import { RideNavigationData } from '@/hooks/useEnhancedDriverNavigation';
 import NavigationMapboxMap, { NavigationMapboxMapRef } from '@/components/NavigationMapboxMap';
@@ -65,27 +66,6 @@ const validateParams = (params: any): RideNavigationData | null => {
         console.error('❌ Error creating ride data:', error);
         return null;
     }
-};
-
-// Haversine formula to calculate distance between two coordinates
-const calculateDistance = (
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number
-): number => {
-    const R = 6371e3; // Earth's radius in meters
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-        Math.cos(φ1) * Math.cos(φ2) *
-        Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-    return R * c; // Distance in meters
 };
 
 export default function GeofencedDriverNavigationScreen() {
@@ -259,7 +239,7 @@ export default function GeofencedDriverNavigationScreen() {
         }
     }, [isMuted]);
 
-    // Geofence checking logic
+    // Geofence checking logic using geolib
     useEffect(() => {
         if (!driverLocation || !rideData) return;
 
@@ -267,11 +247,15 @@ export default function GeofencedDriverNavigationScreen() {
         const checkGeofences = () => {
             // Check pickup geofence (only relevant during 'to-pickup' phase)
             if (navigationPhase === 'to-pickup') {
-                const distanceToPickup = calculateDistance(
-                    driverLocation.latitude,
-                    driverLocation.longitude,
-                    rideData.pickupLat,
-                    rideData.pickupLng
+                const distanceToPickup = getDistance(
+                    {
+                        latitude: driverLocation.latitude,
+                        longitude: driverLocation.longitude
+                    },
+                    {
+                        latitude: rideData.pickupLat,
+                        longitude: rideData.pickupLng
+                    }
                 );
 
                 const wasInPickupGeofence = isInPickupGeofence;
@@ -281,7 +265,7 @@ export default function GeofencedDriverNavigationScreen() {
 
                 // Entered pickup geofence
                 if (!wasInPickupGeofence && nowInPickupGeofence) {
-                    console.log('📍 Entered pickup geofence');
+                    console.log('📍 Entered pickup geofence - Distance:', distanceToPickup, 'meters');
                     setNavigationPhase('at-pickup');
                     speakInstruction('You have arrived at the pickup location. Waiting for passenger.');
 
@@ -296,11 +280,15 @@ export default function GeofencedDriverNavigationScreen() {
 
             // Check destination geofence (only relevant during 'to-destination' phase)
             if (navigationPhase === 'to-destination') {
-                const distanceToDestination = calculateDistance(
-                    driverLocation.latitude,
-                    driverLocation.longitude,
-                    rideData.destLat,
-                    rideData.destLng
+                const distanceToDestination = getDistance(
+                    {
+                        latitude: driverLocation.latitude,
+                        longitude: driverLocation.longitude
+                    },
+                    {
+                        latitude: rideData.destLat,
+                        longitude: rideData.destLng
+                    }
                 );
 
                 const wasInDestinationGeofence = isInDestinationGeofence;
@@ -310,7 +298,7 @@ export default function GeofencedDriverNavigationScreen() {
 
                 // Entered destination geofence
                 if (!wasInDestinationGeofence && nowInDestinationGeofence) {
-                    console.log('📍 Entered destination geofence');
+                    console.log('📍 Entered destination geofence - Distance:', distanceToDestination, 'meters');
                     setNavigationPhase('at-destination');
                     speakInstruction('You have arrived at the destination.');
                 }
