@@ -1,13 +1,13 @@
-// hooks/useTripRoute.ts - Fixed version
 import { useEffect, useRef, useCallback } from 'react';
 import { Alert } from 'react-native';
-import { DirectionsService } from '@/components/DirectionsService';
+import { OSRMNavigationService } from '@/hooks/OSRMNavigationService';
+import {Feature} from "geojson";
 
 interface UseTripRouteProps {
     userPickupCoords: [number, number] | null;
     driverStartLat: number;
     driverStartLng: number;
-    setRouteToPickupGeoJSON: (route: GeoJSON.Feature | null) => void;
+    setRouteToPickupGeoJSON: (route: Feature | null) => void;
     setDriverCoords: (coords: [number, number]) => void;
     setCurrentLegIndex: (index: number) => void;
     setIsLoadingRoute: (loading: boolean) => void;
@@ -22,7 +22,7 @@ export const useTripRoute = ({
                                  setCurrentLegIndex,
                                  setIsLoadingRoute,
                              }: UseTripRouteProps) => {
-    const directionsService = useRef(new DirectionsService()).current;
+    const navigationService = useRef(new OSRMNavigationService()).current;
     const isCalculatingRef = useRef(false);
     const lastCalculationRef = useRef<string>('');
 
@@ -45,32 +45,51 @@ export const useTripRoute = ({
         setRouteToPickupGeoJSON(null);
 
         try {
-            const initialDriverLocationForRoute = {
-                longitude: driverLng,
-                latitude: driverLat
-            };
-
-            const routeData = await directionsService.getDirections(
-                initialDriverLocationForRoute,
-                { longitude: pickupCoords[0], latitude: pickupCoords[1] }
+            // Use OSRMNavigationService instead of DirectionsService
+            const routeData = await navigationService.calculateRoute(
+                {
+                    latitude: driverLat,
+                    longitude: driverLng
+                },
+                {
+                    latitude: pickupCoords[1], // pickupCoords is [lng, lat]
+                    longitude: pickupCoords[0]
+                }
             );
 
             // Only update if this is still the current calculation
             if (lastCalculationRef.current === calculationKey) {
-                setRouteToPickupGeoJSON(routeData.geoJSON);
+                // Convert NavigationRoute geometry to GeoJSON Feature
+                const routeGeoJSON: Feature = {
+                    type: 'Feature',
+                    properties: {},
+                    geometry: routeData.geometry
+                };
 
-                if (routeData.geoJSON?.geometry?.type === 'LineString' &&
-                    routeData.geoJSON.geometry.coordinates.length > 0) {
-                    setDriverCoords(routeData.geoJSON.geometry.coordinates[0] as [number, number]);
+                setRouteToPickupGeoJSON(routeGeoJSON);
+
+                // Set initial driver position from route coordinates
+                if (routeData.coordinates.length > 0) {
+                    const firstCoord = routeData.coordinates[0];
+                    setDriverCoords([firstCoord.longitude, firstCoord.latitude]);
                     setCurrentLegIndex(0);
+
+                    console.log('✅ Trip route calculated:', {
+                        distance: `${(routeData.distance / 1000).toFixed(1)} km`,
+                        duration: `${Math.floor(routeData.duration / 60)}m`,
+                        coordinates: routeData.coordinates.length,
+                        instructions: routeData.instructions.length
+                    });
                 } else {
+                    // Fallback to original driver position
                     setDriverCoords([driverLng, driverLat]);
+                    console.warn('⚠️ No route coordinates returned, using fallback position');
                 }
             }
         } catch (error: any) {
             // Only show error if this is still the current calculation
             if (lastCalculationRef.current === calculationKey) {
-                console.error('Trip route calculation error:', error);
+                console.error('❌ Trip route calculation error:', error);
                 Alert.alert('Route Error', error.message || 'Failed to calculate route for driver to pickup.');
                 setRouteToPickupGeoJSON(null);
                 setDriverCoords([driverLng, driverLat]);
@@ -79,7 +98,7 @@ export const useTripRoute = ({
             isCalculatingRef.current = false;
             setIsLoadingRoute(false);
         }
-    }, [directionsService, setRouteToPickupGeoJSON, setDriverCoords, setCurrentLegIndex, setIsLoadingRoute]);
+    }, [navigationService, setRouteToPickupGeoJSON, setDriverCoords, setCurrentLegIndex, setIsLoadingRoute]);
 
     useEffect(() => {
         if (!userPickupCoords) {
@@ -96,6 +115,10 @@ export const useTripRoute = ({
 
         // Only calculate if this is a new route
         if (calculationKey !== lastCalculationRef.current) {
+            console.log('🚗 Calculating driver-to-pickup route:', {
+                from: `${driverStartLat}, ${driverStartLng}`,
+                to: `${userPickupCoords[1]}, ${userPickupCoords[0]}`
+            });
             calculateTripRoute(userPickupCoords, driverStartLat, driverStartLng);
         }
     }, [
@@ -106,14 +129,16 @@ export const useTripRoute = ({
         calculateTripRoute
     ]);
 
+    const clearRoute = useCallback(() => {
+        isCalculatingRef.current = false;
+        lastCalculationRef.current = '';
+        setRouteToPickupGeoJSON(null);
+        setIsLoadingRoute(false);
+    }, [setRouteToPickupGeoJSON, setIsLoadingRoute]);
+
     return {
-        directionsService,
+        navigationService, // Expose the service instead of directionsService
         isCalculating: isCalculatingRef.current,
-        clearRoute: useCallback(() => {
-            isCalculatingRef.current = false;
-            lastCalculationRef.current = '';
-            setRouteToPickupGeoJSON(null);
-            setIsLoadingRoute(false);
-        }, [setRouteToPickupGeoJSON, setIsLoadingRoute])
+        clearRoute
     };
 };
