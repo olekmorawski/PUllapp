@@ -14,7 +14,6 @@ import {
     NavigationControls,
 } from '@/components/NavigationUIComponents';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Navigation phases - Added 'at-pickup' and 'at-destination' phases
 type NavigationPhase = 'to-pickup' | 'at-pickup' | 'picking-up' | 'to-destination' | 'at-destination' | 'completed';
