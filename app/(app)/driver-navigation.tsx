@@ -9,7 +9,6 @@ import { useOSRMNavigation } from '@/hooks/useOSRMNavigation';
 import { RideNavigationData } from '@/hooks/useEnhancedDriverNavigation';
 import NavigationMapboxMap, { NavigationMapboxMapRef } from '@/components/NavigationMapboxMap';
 import {
-    SpeedIndicator,
     EtaCard,
     NavigationInstruction,
     NavigationControls,
@@ -68,6 +67,19 @@ const validateParams = (params: any): RideNavigationData | null => {
     }
 };
 
+// Helper function to normalize maneuver types
+const normalizeManeuverType = (maneuverType?: string): 'turn-left' | 'turn-right' | 'straight' | 'u-turn' => {
+    if (!maneuverType) return 'straight';
+
+    const normalized = maneuverType.toLowerCase();
+
+    if (normalized.includes('left')) return 'turn-left';
+    if (normalized.includes('right')) return 'turn-right';
+    if (normalized.includes('u-turn') || normalized.includes('uturn')) return 'u-turn';
+
+    return 'straight';
+};
+
 export default function GeofencedDriverNavigationScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
@@ -82,11 +94,13 @@ export default function GeofencedDriverNavigationScreen() {
     } | null>(null);
     const [locationLoading, setLocationLoading] = useState(true);
     const locationSubscription = useRef<Location.LocationSubscription | null>(null);
-    const geofenceCheckInterval = useRef<NodeJS.Timeout | null>(null);
+    // Fix: Use number type for React Native timers instead of NodeJS.Timeout
+    const geofenceCheckInterval = useRef<number | null>(null);
     const [isInPickupGeofence, setIsInPickupGeofence] = useState(false);
     const [isInDestinationGeofence, setIsInDestinationGeofence] = useState(false);
     const [pickupTimer, setPickupTimer] = useState(0);
-    const pickupTimerInterval = useRef<NodeJS.Timeout | null>(null);
+    // Fix: Use number type for React Native timers instead of NodeJS.Timeout
+    const pickupTimerInterval = useRef<number | null>(null);
     const [maneuverPoints, setManeuverPoints] = useState<Array<{
         coordinate: [number, number];
         type: string;
@@ -170,51 +184,22 @@ export default function GeofencedDriverNavigationScreen() {
 
     if (!rideData) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
+            <SafeAreaView className="flex-1 bg-gray-100">
                 <Stack.Screen options={{ headerShown: false }} />
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <View style={{
-                        backgroundColor: 'white',
-                        borderRadius: 20,
-                        padding: 32,
-                        marginHorizontal: 32,
-                        alignItems: 'center',
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 12,
-                        elevation: 8
-                    }}>
+                <View className="flex-1 justify-center items-center">
+                    <View className="bg-white rounded-2xl p-8 mx-8 items-center shadow-lg">
                         <Ionicons name="warning" size={48} color="#EA4335" />
-                        <Text style={{
-                            fontSize: 20,
-                            fontWeight: '600',
-                            color: '#1a1a1a',
-                            marginTop: 16,
-                            marginBottom: 8,
-                            textAlign: 'center'
-                        }}>
+                        <Text className="text-xl font-semibold text-gray-900 mt-4 mb-2 text-center">
                             Invalid Navigation Data
                         </Text>
-                        <Text style={{
-                            fontSize: 16,
-                            color: '#666',
-                            textAlign: 'center',
-                            lineHeight: 22,
-                            marginBottom: 24
-                        }}>
+                        <Text className="text-base text-gray-600 text-center leading-6 mb-6">
                             The ride information is missing or invalid. Please try again.
                         </Text>
                         <TouchableOpacity
                             onPress={() => router.replace('/(app)')}
-                            style={{
-                                backgroundColor: '#4285F4',
-                                borderRadius: 12,
-                                paddingHorizontal: 24,
-                                paddingVertical: 12
-                            }}
+                            className="bg-blue-500 rounded-xl px-6 py-3"
                         >
-                            <Text style={{ color: 'white', fontWeight: '600' }}>
+                            <Text className="text-white font-semibold">
                                 Back to Dashboard
                             </Text>
                         </TouchableOpacity>
@@ -271,10 +256,11 @@ export default function GeofencedDriverNavigationScreen() {
 
                     // Start pickup timer
                     let seconds = 0;
+                    // Fix: Cast setInterval return value to number for React Native
                     pickupTimerInterval.current = setInterval(() => {
                         seconds++;
                         setPickupTimer(seconds);
-                    }, 1000);
+                    }, 1000) as unknown as number;
                 }
             }
 
@@ -306,7 +292,8 @@ export default function GeofencedDriverNavigationScreen() {
         };
 
         // Set up periodic geofence checking
-        geofenceCheckInterval.current = setInterval(checkGeofences, GEOFENCE_CHECK_INTERVAL);
+        // Fix: Cast setInterval return value to number for React Native
+        geofenceCheckInterval.current = setInterval(checkGeofences, GEOFENCE_CHECK_INTERVAL) as unknown as number;
 
         // Initial check
         checkGeofences();
@@ -552,37 +539,15 @@ export default function GeofencedDriverNavigationScreen() {
     // Show loading state
     if (locationLoading || (isLoading && !route)) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
+            <SafeAreaView className="flex-1 bg-gray-100">
                 <Stack.Screen options={{ headerShown: false }} />
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <View style={{
-                        backgroundColor: 'white',
-                        borderRadius: 20,
-                        padding: 32,
-                        marginHorizontal: 32,
-                        alignItems: 'center',
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 12,
-                        elevation: 8
-                    }}>
+                <View className="flex-1 justify-center items-center">
+                    <View className="bg-white rounded-2xl p-8 mx-8 items-center shadow-lg">
                         <ActivityIndicator size="large" color="#4285F4" />
-                        <Text style={{
-                            fontSize: 20,
-                            fontWeight: '600',
-                            color: '#1a1a1a',
-                            marginTop: 16,
-                            marginBottom: 8
-                        }}>
+                        <Text className="text-xl font-semibold text-gray-900 mt-4 mb-2">
                             {locationLoading ? 'Getting Your Location...' : 'Starting Navigation...'}
                         </Text>
-                        <Text style={{
-                            fontSize: 16,
-                            color: '#666',
-                            textAlign: 'center',
-                            lineHeight: 22
-                        }}>
+                        <Text className="text-base text-gray-600 text-center leading-6">
                             {locationLoading
                                 ? 'Please wait while we locate you'
                                 : `Calculating route to ${navConfig?.destinationName}`
@@ -597,65 +562,30 @@ export default function GeofencedDriverNavigationScreen() {
     // Show error state
     if (error && !route) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
+            <SafeAreaView className="flex-1 bg-gray-100">
                 <Stack.Screen options={{ headerShown: false }} />
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <View style={{
-                        backgroundColor: 'white',
-                        borderRadius: 20,
-                        padding: 32,
-                        marginHorizontal: 32,
-                        alignItems: 'center',
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 12,
-                        elevation: 8
-                    }}>
+                <View className="flex-1 justify-center items-center">
+                    <View className="bg-white rounded-2xl p-8 mx-8 items-center shadow-lg">
                         <Ionicons name="warning" size={48} color="#EA4335" />
-                        <Text style={{
-                            fontSize: 20,
-                            fontWeight: '600',
-                            color: '#1a1a1a',
-                            marginTop: 16,
-                            marginBottom: 8,
-                            textAlign: 'center'
-                        }}>
+                        <Text className="text-xl font-semibold text-gray-900 mt-4 mb-2 text-center">
                             Navigation Error
                         </Text>
-                        <Text style={{
-                            fontSize: 16,
-                            color: '#666',
-                            textAlign: 'center',
-                            lineHeight: 22,
-                            marginBottom: 24
-                        }}>
+                        <Text className="text-base text-gray-600 text-center leading-6 mb-6">
                             {error.message}
                         </Text>
                         <TouchableOpacity
                             onPress={retryNavigation}
-                            style={{
-                                backgroundColor: '#4285F4',
-                                borderRadius: 12,
-                                paddingHorizontal: 24,
-                                paddingVertical: 12,
-                                marginBottom: 12
-                            }}
+                            className="bg-blue-500 rounded-xl px-6 py-3 mb-3"
                         >
-                            <Text style={{ color: 'white', fontWeight: '600' }}>
+                            <Text className="text-white font-semibold">
                                 Try Again
                             </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                             onPress={() => router.back()}
-                            style={{
-                                backgroundColor: '#f5f5f5',
-                                borderRadius: 12,
-                                paddingHorizontal: 24,
-                                paddingVertical: 12
-                            }}
+                            className="bg-gray-100 rounded-xl px-6 py-3"
                         >
-                            <Text style={{ color: '#666', fontWeight: '500' }}>
+                            <Text className="text-gray-600 font-medium">
                                 Go Back
                             </Text>
                         </TouchableOpacity>
@@ -668,11 +598,11 @@ export default function GeofencedDriverNavigationScreen() {
     // Show pickup waiting screen when at pickup location
     if (navigationPhase === 'at-pickup') {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: '#4285F4' }}>
+            <SafeAreaView className="flex-1 bg-blue-500">
                 <Stack.Screen options={{ headerShown: false }} />
-                <View style={{ flex: 1 }}>
+                <View className="flex-1">
                     {/* Map in background */}
-                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                    <View className="absolute inset-0">
                         <NavigationMapboxMap
                             ref={mapRef}
                             driverLocation={currentPosition || driverLocation}
@@ -703,61 +633,36 @@ export default function GeofencedDriverNavigationScreen() {
                     </View>
 
                     {/* Overlay content */}
-                    <View style={{
-                        flex: 1,
-                        justifyContent: 'space-between',
-                        paddingTop: 60
-                    }}>
+                    <View className="flex-1 justify-between pt-16">
                         {/* Header */}
-                        <View style={{
-                            backgroundColor: 'white',
-                            marginHorizontal: 20,
-                            borderRadius: 16,
-                            padding: 20,
-                            shadowColor: '#000',
-                            shadowOffset: { width: 0, height: 4 },
-                            shadowOpacity: 0.15,
-                            shadowRadius: 8,
-                            elevation: 6
-                        }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                                <View style={{
-                                    width: 60,
-                                    height: 60,
-                                    borderRadius: 30,
-                                    backgroundColor: '#E8F0FE',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                }}>
+                        <View className="bg-white mx-5 rounded-2xl p-5 shadow-lg">
+                            <View className="flex-row items-center mb-4">
+                                <View className="w-16 h-16 rounded-full bg-blue-50 items-center justify-center">
                                     <Ionicons name="time" size={30} color="#4285F4" />
                                 </View>
-                                <View style={{ marginLeft: 16, flex: 1 }}>
-                                    <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                                <View className="ml-4 flex-1">
+                                    <Text className="text-sm text-gray-600 mb-1">
                                         Waiting at pickup
                                     </Text>
-                                    <Text style={{ fontSize: 24, fontWeight: '700', color: '#1a1a1a' }}>
+                                    <Text className="text-2xl font-bold text-gray-900">
                                         {formatTimer(pickupTimer)}
                                     </Text>
                                 </View>
                             </View>
 
-                            <View style={{
-                                borderTopWidth: 1,
-                                borderTopColor: '#f0f0f0',
-                                paddingTop: 16
-                            }}>
-                                <Text style={{ fontSize: 18, fontWeight: '600', color: '#1a1a1a', marginBottom: 8 }}>
+                            <View className="border-t border-gray-200 pt-4">
+                                <Text className="text-lg font-semibold text-gray-900 mb-2">
                                     {rideData.passengerName}
                                 </Text>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                <View className="flex-row items-center mb-2">
                                     <Ionicons name="location" size={16} color="#666" />
-                                    <Text style={{ fontSize: 14, color: '#666', marginLeft: 8, flex: 1 }} numberOfLines={2}>
+                                    <Text className="text-sm text-gray-600 ml-2 flex-1" numberOfLines={2}>
                                         {rideData.pickupAddress}
                                     </Text>
                                 </View>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <View className="flex-row items-center">
                                     <Ionicons name="cash-outline" size={16} color="#666" />
-                                    <Text style={{ fontSize: 14, color: '#666', marginLeft: 8 }}>
+                                    <Text className="text-sm text-gray-600 ml-2">
                                         Est. fare: {rideData.estimatedPrice}
                                     </Text>
                                 </View>
@@ -765,65 +670,27 @@ export default function GeofencedDriverNavigationScreen() {
                         </View>
 
                         {/* Bottom actions */}
-                        <View style={{
-                            backgroundColor: 'white',
-                            paddingHorizontal: 20,
-                            paddingTop: 20,
-                            paddingBottom: 40,
-                            borderTopLeftRadius: 24,
-                            borderTopRightRadius: 24,
-                            shadowColor: '#000',
-                            shadowOffset: { width: 0, height: -4 },
-                            shadowOpacity: 0.1,
-                            shadowRadius: 8,
-                            elevation: 10
-                        }}>
+                        <View className="bg-white px-5 pt-5 pb-10 rounded-t-3xl shadow-lg">
                             <TouchableOpacity
                                 onPress={handlePassengerPickup}
-                                style={{
-                                    backgroundColor: '#34A853',
-                                    borderRadius: 12,
-                                    paddingVertical: 18,
-                                    alignItems: 'center',
-                                    marginBottom: 12
-                                }}
+                                className="bg-green-600 rounded-xl py-5 items-center mb-3"
                             >
-                                <Text style={{ color: 'white', fontSize: 18, fontWeight: '600' }}>
+                                <Text className="text-white text-lg font-semibold">
                                     Passenger Picked Up
                                 </Text>
                             </TouchableOpacity>
 
-                            <View style={{ flexDirection: 'row', gap: 12 }}>
-                                <TouchableOpacity
-                                    style={{
-                                        flex: 1,
-                                        backgroundColor: '#f5f5f5',
-                                        borderRadius: 12,
-                                        paddingVertical: 16,
-                                        alignItems: 'center',
-                                        flexDirection: 'row',
-                                        justifyContent: 'center'
-                                    }}
-                                >
+                            <View className="flex-row gap-3">
+                                <TouchableOpacity className="flex-1 bg-gray-100 rounded-xl py-4 items-center flex-row justify-center">
                                     <Ionicons name="call" size={20} color="#4285F4" />
-                                    <Text style={{ color: '#4285F4', fontSize: 16, fontWeight: '600', marginLeft: 8 }}>
+                                    <Text className="text-blue-500 text-base font-semibold ml-2">
                                         Call
                                     </Text>
                                 </TouchableOpacity>
 
-                                <TouchableOpacity
-                                    style={{
-                                        flex: 1,
-                                        backgroundColor: '#f5f5f5',
-                                        borderRadius: 12,
-                                        paddingVertical: 16,
-                                        alignItems: 'center',
-                                        flexDirection: 'row',
-                                        justifyContent: 'center'
-                                    }}
-                                >
+                                <TouchableOpacity className="flex-1 bg-gray-100 rounded-xl py-4 items-center flex-row justify-center">
                                     <Ionicons name="chatbubble" size={20} color="#4285F4" />
-                                    <Text style={{ color: '#4285F4', fontSize: 16, fontWeight: '600', marginLeft: 8 }}>
+                                    <Text className="text-blue-500 text-base font-semibold ml-2">
                                         Message
                                     </Text>
                                 </TouchableOpacity>
@@ -831,13 +698,9 @@ export default function GeofencedDriverNavigationScreen() {
 
                             <TouchableOpacity
                                 onPress={handleBackPress}
-                                style={{
-                                    marginTop: 12,
-                                    paddingVertical: 12,
-                                    alignItems: 'center'
-                                }}
+                                className="mt-3 py-3 items-center"
                             >
-                                <Text style={{ color: '#EA4335', fontSize: 16, fontWeight: '500' }}>
+                                <Text className="text-red-500 text-base font-medium">
                                     Cancel Trip
                                 </Text>
                             </TouchableOpacity>
@@ -851,49 +714,20 @@ export default function GeofencedDriverNavigationScreen() {
     // Show loading screen when picking up passenger
     if (navigationPhase === 'picking-up') {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: '#34A853' }}>
+            <SafeAreaView className="flex-1 bg-green-600">
                 <Stack.Screen options={{ headerShown: false }} />
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <View style={{
-                        backgroundColor: 'white',
-                        borderRadius: 20,
-                        padding: 32,
-                        marginHorizontal: 32,
-                        alignItems: 'center',
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.15,
-                        shadowRadius: 12,
-                        elevation: 8
-                    }}>
-                        <View style={{
-                            width: 80,
-                            height: 80,
-                            borderRadius: 40,
-                            backgroundColor: '#E6F4EA',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginBottom: 20
-                        }}>
+                <View className="flex-1 justify-center items-center">
+                    <View className="bg-white rounded-2xl p-8 mx-8 items-center shadow-lg">
+                        <View className="w-20 h-20 rounded-full bg-green-50 items-center justify-center mb-5">
                             <Ionicons name="car" size={40} color="#34A853" />
                         </View>
-                        <Text style={{
-                            fontSize: 24,
-                            fontWeight: '700',
-                            color: '#1a1a1a',
-                            marginBottom: 8
-                        }}>
+                        <Text className="text-2xl font-bold text-gray-900 mb-2">
                             Starting Trip
                         </Text>
-                        <Text style={{
-                            fontSize: 16,
-                            color: '#666',
-                            textAlign: 'center',
-                            lineHeight: 22
-                        }}>
+                        <Text className="text-base text-gray-600 text-center leading-6">
                             Navigating to {rideData.destAddress}
                         </Text>
-                        <ActivityIndicator size="large" color="#34A853" style={{ marginTop: 20 }} />
+                        <ActivityIndicator size="large" color="#34A853" className="mt-5" />
                     </View>
                 </View>
             </SafeAreaView>
@@ -903,11 +737,11 @@ export default function GeofencedDriverNavigationScreen() {
     // Show arrival at destination screen
     if (navigationPhase === 'at-destination') {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: '#34A853' }}>
+            <SafeAreaView className="flex-1 bg-green-600">
                 <Stack.Screen options={{ headerShown: false }} />
-                <View style={{ flex: 1 }}>
+                <View className="flex-1">
                     {/* Map in background */}
-                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                    <View className="absolute inset-0">
                         <NavigationMapboxMap
                             ref={mapRef}
                             driverLocation={currentPosition || driverLocation}
@@ -934,65 +768,37 @@ export default function GeofencedDriverNavigationScreen() {
                     </View>
 
                     {/* Overlay content */}
-                    <View style={{
-                        flex: 1,
-                        justifyContent: 'flex-end'
-                    }}>
-                        <View style={{
-                            backgroundColor: 'white',
-                            paddingHorizontal: 20,
-                            paddingTop: 24,
-                            paddingBottom: 40,
-                            borderTopLeftRadius: 24,
-                            borderTopRightRadius: 24,
-                            shadowColor: '#000',
-                            shadowOffset: { width: 0, height: -4 },
-                            shadowOpacity: 0.1,
-                            shadowRadius: 8,
-                            elevation: 10
-                        }}>
-                            <View style={{ alignItems: 'center', marginBottom: 24 }}>
-                                <View style={{
-                                    width: 80,
-                                    height: 80,
-                                    borderRadius: 40,
-                                    backgroundColor: '#E6F4EA',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    marginBottom: 16
-                                }}>
+                    <View className="flex-1 justify-end">
+                        <View className="bg-white px-5 pt-6 pb-10 rounded-t-3xl shadow-lg">
+                            <View className="items-center mb-6">
+                                <View className="w-20 h-20 rounded-full bg-green-50 items-center justify-center mb-4">
                                     <Ionicons name="checkmark-circle" size={50} color="#34A853" />
                                 </View>
-                                <Text style={{ fontSize: 24, fontWeight: '700', color: '#1a1a1a', marginBottom: 8 }}>
+                                <Text className="text-2xl font-bold text-gray-900 mb-2">
                                     Arrived at Destination
                                 </Text>
-                                <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
+                                <Text className="text-base text-gray-600 text-center">
                                     {rideData.destAddress}
                                 </Text>
                             </View>
 
-                            <View style={{
-                                backgroundColor: '#f5f5f5',
-                                borderRadius: 12,
-                                padding: 16,
-                                marginBottom: 20
-                            }}>
-                                <Text style={{ fontSize: 14, color: '#666', marginBottom: 8 }}>
+                            <View className="bg-gray-100 rounded-xl p-4 mb-5">
+                                <Text className="text-sm text-gray-600 mb-2">
                                     Trip Summary
                                 </Text>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                                    <Text style={{ fontSize: 16, color: '#1a1a1a' }}>
+                                <View className="flex-row justify-between mb-2">
+                                    <Text className="text-base text-gray-900">
                                         Passenger
                                     </Text>
-                                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#1a1a1a' }}>
+                                    <Text className="text-base font-semibold text-gray-900">
                                         {rideData.passengerName}
                                     </Text>
                                 </View>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                    <Text style={{ fontSize: 16, color: '#1a1a1a' }}>
+                                <View className="flex-row justify-between">
+                                    <Text className="text-base text-gray-900">
                                         Fare
                                     </Text>
-                                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#34A853' }}>
+                                    <Text className="text-base font-semibold text-green-600">
                                         {rideData.estimatedPrice}
                                     </Text>
                                 </View>
@@ -1000,14 +806,9 @@ export default function GeofencedDriverNavigationScreen() {
 
                             <TouchableOpacity
                                 onPress={handleTripComplete}
-                                style={{
-                                    backgroundColor: '#34A853',
-                                    borderRadius: 12,
-                                    paddingVertical: 18,
-                                    alignItems: 'center'
-                                }}
+                                className="bg-green-600 rounded-xl py-5 items-center"
                             >
-                                <Text style={{ color: 'white', fontSize: 18, fontWeight: '600' }}>
+                                <Text className="text-white text-lg font-semibold">
                                     Complete Trip
                                 </Text>
                             </TouchableOpacity>
@@ -1023,7 +824,7 @@ export default function GeofencedDriverNavigationScreen() {
 
     // Main navigation view
     return (
-        <View style={{ flex: 1 }}>
+        <View className="flex-1">
             <Stack.Screen options={{ headerShown: false }} />
 
             {/* Navigation Map with Route, Maneuver Arrows, and Geofences */}
@@ -1066,58 +867,29 @@ export default function GeofencedDriverNavigationScreen() {
             />
 
             {/* Phase Indicator Banner */}
-            <View style={{
-                position: 'absolute',
-                top: 60,
-                left: 20,
-                right: 20,
-                backgroundColor: navigationPhase === 'to-pickup' ? '#4285F4' : '#34A853',
-                borderRadius: 12,
-                padding: 12,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.25,
-                shadowRadius: 4,
-                elevation: 5,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-            }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <View className={`absolute top-16 left-5 right-5 ${navigationPhase === 'to-pickup' ? 'bg-blue-500' : 'bg-green-600'} rounded-xl p-3 shadow-lg flex-row items-center justify-between`}>
+                <View className="flex-row items-center flex-1">
                     <Ionicons
                         name={navigationPhase === 'to-pickup' ? 'person' : 'location'}
                         size={24}
                         color="white"
                     />
-                    <View style={{ marginLeft: 12, flex: 1 }}>
-                        <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+                    <View className="ml-3 flex-1">
+                        <Text className="text-white text-sm font-semibold">
                             {navigationPhase === 'to-pickup' ? 'Going to Pickup' : 'Going to Destination'}
                         </Text>
-                        <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                        <Text className="text-white/90 text-xs mt-1" numberOfLines={1}>
                             {navigationPhase === 'to-pickup' ? rideData.pickupAddress : rideData.destAddress}
                         </Text>
                     </View>
                 </View>
                 <TouchableOpacity
                     onPress={handleBackPress}
-                    style={{
-                        backgroundColor: 'rgba(0,0,0,0.2)',
-                        borderRadius: 20,
-                        padding: 8
-                    }}
+                    className="bg-black/20 rounded-full p-2"
                 >
                     <Ionicons name="close" size={20} color="white" />
                 </TouchableOpacity>
             </View>
-
-            {/* Speed Indicator */}
-            {currentPosition && isNavigating && (
-                <SpeedIndicator
-                    speed={currentPosition.speed ? currentPosition.speed * 3.6 : 0} // Convert m/s to km/h
-                    speedLimit={50}
-                    isVisible={isNavigating && (currentPosition.speed || 0) > 0.5}
-                />
-            )}
 
             {/* ETA Card */}
             {isNavigating && (
@@ -1134,36 +906,24 @@ export default function GeofencedDriverNavigationScreen() {
                 <NavigationInstruction
                     instruction={currentInstruction.text || currentInstruction.voiceInstruction || 'Continue straight'}
                     distance={formatDistance(currentInstruction.distance || 0)}
-                    maneuver={currentInstruction.maneuver?.type || 'straight'}
+                    // Fix: Use normalizeManeuverType to ensure proper type
+                    maneuver={normalizeManeuverType(currentInstruction.maneuver?.type)}
                     isVisible={showInstructions && isNavigating}
                 />
             )}
 
             {/* Passenger Info Card (shown during pickup phase) */}
             {navigationPhase === 'to-pickup' && (
-                <View style={{
-                    position: 'absolute',
-                    bottom: 200,
-                    left: 20,
-                    right: 20,
-                    backgroundColor: 'white',
-                    borderRadius: 12,
-                    padding: 16,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 4,
-                    elevation: 3
-                }}>
-                    <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                <View className="absolute bottom-52 left-5 right-5 bg-white rounded-xl p-4 shadow-sm">
+                    <Text className="text-sm text-gray-600 mb-1">
                         Picking up
                     </Text>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#1a1a1a' }}>
+                    <Text className="text-base font-semibold text-gray-900">
                         {rideData.passengerName}
                     </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                    <View className="flex-row items-center mt-2">
                         <Ionicons name="cash-outline" size={16} color="#666" />
-                        <Text style={{ fontSize: 14, color: '#666', marginLeft: 6 }}>
+                        <Text className="text-sm text-gray-600 ml-2">
                             Estimated: {rideData.estimatedPrice || 'N/A'}
                         </Text>
                     </View>
