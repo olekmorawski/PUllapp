@@ -35,6 +35,13 @@ const isValidCoordinateArray = (coords: any): coords is [number, number] => {
         coords[0] >= -180 && coords[0] <= 180;
 };
 
+interface GeofenceArea {
+    center: [number, number]; // [longitude, latitude]
+    radius: number; // radius in meters
+    color?: string;
+    opacity?: number;
+}
+
 interface NavigationMapboxMapProps {
     driverLocation?: { latitude: number; longitude: number } | null;
     pickup?: { latitude: number; longitude: number } | null;  // ADD THIS LINE
@@ -47,6 +54,7 @@ interface NavigationMapboxMapProps {
         instruction: string;
         distance?: number;
     }>;
+    geofenceAreas?: GeofenceArea[]; // ADD THIS LINE for geofence support
     bearing?: number;
     pitch?: number;
     zoomLevel?: number;
@@ -76,6 +84,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                                                                                               destination,
                                                                                               routeGeoJSON,
                                                                                               maneuverPoints = [],
+                                                                                              geofenceAreas = [], // ADD THIS PARAMETER
                                                                                               bearing = 0,
                                                                                               pitch = 60,
                                                                                               zoomLevel = 18,
@@ -480,6 +489,59 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                         currentPosition={validDriverLocation}
                     />
                 )}
+
+                {/* Geofence Areas */}
+                {geofenceAreas.map((geofence, index) => {
+                    // Create a circle using GeoJSON
+                    const createCircle = (center: [number, number], radiusInMeters: number, points: number = 64): GeoJSON.Polygon => {
+                        const coords = [];
+                        const distanceX = radiusInMeters / (111320 * Math.cos(center[1] * Math.PI / 180));
+                        const distanceY = radiusInMeters / 110540;
+
+                        for (let i = 0; i < points; i++) {
+                            const theta = (i / points) * (2 * Math.PI);
+                            const x = distanceX * Math.cos(theta);
+                            const y = distanceY * Math.sin(theta);
+                            coords.push([center[0] + x, center[1] + y]);
+                        }
+                        coords.push(coords[0]); // Close the polygon
+
+                        return {
+                            type: 'Polygon',
+                            coordinates: [coords]
+                        };
+                    };
+
+                    const circleGeoJSON = createCircle(geofence.center, geofence.radius);
+
+                    return (
+                        <Mapbox.ShapeSource
+                            key={`geofence-${index}`}
+                            id={`geofenceSource-${index}`}
+                            shape={{
+                                type: 'Feature',
+                                properties: {},
+                                geometry: circleGeoJSON
+                            }}
+                        >
+                            <Mapbox.FillLayer
+                                id={`geofenceFill-${index}`}
+                                style={{
+                                    fillColor: geofence.color || '#4285F4',
+                                    fillOpacity: geofence.opacity || 0.2
+                                }}
+                            />
+                            <Mapbox.LineLayer
+                                id={`geofenceBorder-${index}`}
+                                style={{
+                                    lineColor: geofence.color || '#4285F4',
+                                    lineWidth: 2,
+                                    lineOpacity: 0.5
+                                }}
+                            />
+                        </Mapbox.ShapeSource>
+                    );
+                })}
 
                 {/* Pickup Marker (if provided and different from destination) */}
                 {validPickup && (

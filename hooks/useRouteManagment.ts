@@ -1,7 +1,6 @@
-// hooks/useRouteManagement.ts - Fixed version
 import { useEffect, useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
-import { DirectionsService } from '@/components/DirectionsService';
+import { OSRMNavigationService } from '@/hooks/OSRMNavigationService';
 import { LocationData } from './useRideAppState';
 
 interface UseRouteManagementProps {
@@ -19,7 +18,7 @@ export const useRouteManagement = ({
                                        setRouteInfo,
                                        setIsLoadingRoute,
                                    }: UseRouteManagementProps) => {
-    const directionsService = useRef(new DirectionsService()).current;
+    const navigationService = useRef(new OSRMNavigationService()).current;
     const isCalculatingRef = useRef(false);
     const lastRouteKeyRef = useRef<string>('');
 
@@ -47,17 +46,37 @@ export const useRouteManagement = ({
         setRouteInfo(null);
 
         try {
-            const routeData = await directionsService.getDirections(
-                originData.coordinates,
-                destinationData.coordinates
+            // Use OSRMNavigationService instead of DirectionsService
+            const routeData = await navigationService.calculateRoute(
+                {
+                    latitude: originData.coordinates.latitude,
+                    longitude: originData.coordinates.longitude
+                },
+                {
+                    latitude: destinationData.coordinates.latitude,
+                    longitude: destinationData.coordinates.longitude
+                }
             );
 
             // Double-check we're still working on the same route
             if (lastRouteKeyRef.current === routeKey) {
-                setRouteGeoJSON(routeData.geoJSON);
+                // Convert NavigationRoute geometry to GeoJSON Feature
+                const routeGeoJSON: GeoJSON.Feature = {
+                    type: 'Feature',
+                    properties: {},
+                    geometry: routeData.geometry
+                };
+
+                setRouteGeoJSON(routeGeoJSON);
+
+                // Format route info to match expected format
                 setRouteInfo({
-                    distance: routeData.distanceText,
-                    duration: routeData.durationText,
+                    distance: routeData.distance >= 1000
+                        ? `${(routeData.distance / 1000).toFixed(1)} km`
+                        : `${Math.round(routeData.distance)} m`,
+                    duration: routeData.duration >= 3600
+                        ? `${Math.floor(routeData.duration / 3600)}h ${Math.floor((routeData.duration % 3600) / 60)}m`
+                        : `${Math.floor(routeData.duration / 60)}m`,
                     distanceValue: routeData.distance,
                     durationValue: routeData.duration,
                 });
@@ -67,13 +86,18 @@ export const useRouteManagement = ({
                 const baseFare = 3;
                 const perKmRate = 1.5;
                 const estimatedPrice = baseFare + distanceKm * perKmRate;
-                console.log('Updated estimates for', distanceKm.toFixed(1), 'km route');
+                console.log('✅ OSRM route calculated:', {
+                    distance: `${distanceKm.toFixed(1)} km`,
+                    duration: `${Math.floor(routeData.duration / 60)}m`,
+                    estimatedPrice: `$${estimatedPrice.toFixed(2)}`,
+                    instructions: routeData.instructions.length
+                });
             }
 
         } catch (error: any) {
             // Only show error if we're still working on the same route
             if (lastRouteKeyRef.current === routeKey) {
-                console.error('Route calculation error:', error);
+                console.error('❌ OSRM route calculation error:', error);
                 Alert.alert('Route Error', error.message || 'Failed to calculate route');
                 setRouteGeoJSON(null);
                 setRouteInfo(null);
@@ -82,7 +106,7 @@ export const useRouteManagement = ({
             isCalculatingRef.current = false;
             setIsLoadingRoute(false);
         }
-    }, [directionsService, setRouteGeoJSON, setRouteInfo, setIsLoadingRoute]);
+    }, [navigationService, setRouteGeoJSON, setRouteInfo, setIsLoadingRoute]);
 
     // Calculate route when origin/destination changes
     useEffect(() => {
@@ -129,5 +153,6 @@ export const useRouteManagement = ({
         calculateRoute: manualCalculateRoute,
         clearRoute,
         isCalculating: isCalculatingRef.current,
+        navigationService, // Expose the service for advanced usage
     };
 };
