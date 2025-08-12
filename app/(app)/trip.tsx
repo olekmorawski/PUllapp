@@ -1,4 +1,4 @@
-// app/(app)/trip.tsx - Refactored
+// app/(app)/trip.tsx - Updated to use real-time data
 import React, { useRef } from 'react';
 import { View } from 'react-native';
 import { Stack } from 'expo-router';
@@ -8,8 +8,9 @@ import Mapbox from '@rnmapbox/maps';
 // Custom hooks
 import { useTripState } from '@/hooks/useTripState';
 import { usePickupGeocoding } from '@/hooks/usePickupGeocoding';
-import { useTripRoute } from '@/hooks/useTripRoute';
-import { useDriverMovement } from '@/hooks/useDriverMovement';
+import { useRealTimeDriverTracking } from '@/hooks/useRealTimeDriverTracking';
+import { useRideStatus } from '@/hooks/useRideStatus';
+import { useTripPhaseManager } from '@/hooks/useTripPhaseManager';
 
 // Components
 import { TripMap, TripInfo } from '@/components/trip';
@@ -21,19 +22,7 @@ const TripScreen = () => {
     const {
         tripParams,
         userPickupCoords,
-        driverCoords,
-        routeToPickupGeoJSON,
-        isLoadingRoute,
-        currentLegIndex,
-        tripStatus,
         setUserPickupCoords,
-        setDriverCoords,
-        setRouteToPickupGeoJSON,
-        setIsLoadingRoute,
-        setCurrentLegIndex,
-        updateTripStatus,
-        MOCK_DRIVER_START_LAT,
-        MOCK_DRIVER_START_LNG,
     } = useTripState();
 
     // Handle pickup location geocoding
@@ -42,27 +31,85 @@ const TripScreen = () => {
         setUserPickupCoords,
     });
 
-    // Handle route calculation
-    useTripRoute({
-        userPickupCoords,
-        driverStartLat: MOCK_DRIVER_START_LAT,
-        driverStartLng: MOCK_DRIVER_START_LNG,
-        setRouteToPickupGeoJSON,
-        setDriverCoords,
-        setCurrentLegIndex,
-        setIsLoadingRoute,
+    // Get ride status and assigned driver information
+    // For now, we'll use a mock ride ID until the navigation flow is updated
+    const rideId = tripParams.rideId || 'mock-ride-id';
+    const {
+        ride,
+        assignedDriver,
+        rideStatus,
+        isWaitingForDriver,
+        isDriverAssigned,
+        isLoading: isLoadingRide,
+        error: rideError,
+    } = useRideStatus({
+        rideId,
+        enabled: true,
     });
 
-    // Handle driver movement simulation
-    useDriverMovement({
-        routeToPickupGeoJSON,
-        userPickupCoords,
-        currentLegIndex,
-        driverName: tripParams.driverName,
-        setCurrentLegIndex,
-        setDriverCoords,
-        updateTripStatus,
+    // Passenger locations
+    const passengerPickupLocation = userPickupCoords ? {
+        latitude: userPickupCoords[1],
+        longitude: userPickupCoords[0],
+    } : null;
+
+    const passengerDestinationLocation = ride?.destinationCoordinates ? {
+        latitude: ride.destinationCoordinates.latitude,
+        longitude: ride.destinationCoordinates.longitude,
+    } : null;
+
+    // Initial trip phase management (will be updated with real data)
+    const initialPhaseManager = useTripPhaseManager({
+        ride,
+        driverLocation: null,
+        passengerPickupLocation,
+        passengerDestinationLocation,
+        distance: null,
+        enabled: true,
     });
+
+    // Real-time driver tracking with phase-aware target location
+    const {
+        driverLocation,
+        distance,
+        formattedDistance,
+        eta,
+        formattedEta,
+        routeGeometry,
+        isLoading: isLoadingDistance,
+        error: distanceError,
+        lastUpdated,
+        retry: retryDistance,
+    } = useRealTimeDriverTracking({
+        rideId,
+        driverId: assignedDriver?.id || null,
+        passengerLocation: passengerPickupLocation || { latitude: 0, longitude: 0 },
+        targetLocation: initialPhaseManager.targetLocation,
+        enabled: initialPhaseManager.shouldCalculateDistance && isDriverAssigned && !!passengerPickupLocation,
+    });
+
+    // Updated trip phase management with real driver location and distance
+    const {
+        currentPhase,
+        phaseInfo,
+        targetLocation,
+        shouldCalculateDistance,
+        shouldShowETA,
+        distanceLabel,
+        etaLabel,
+        statusMessage,
+    } = useTripPhaseManager({
+        ride,
+        driverLocation,
+        passengerPickupLocation,
+        passengerDestinationLocation,
+        distance,
+        enabled: true,
+    });
+
+    // Convert driver location to coordinate array format for map display
+    const driverCoords: [number, number] | null = driverLocation ? 
+        [driverLocation.longitude, driverLocation.latitude] : null;
 
     // Calculate initial map region
     const initialMapRegion = currentUserLocation?.coords ? {
@@ -70,16 +117,24 @@ const TripScreen = () => {
         longitude: currentUserLocation.coords.longitude,
         latitudeDelta: 0.02,
         longitudeDelta: 0.01,
+    } : driverLocation ? {
+        latitude: driverLocation.latitude,
+        longitude: driverLocation.longitude,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
     } : {
-        latitude: MOCK_DRIVER_START_LAT,
-        longitude: MOCK_DRIVER_START_LNG,
+        latitude: 37.7749, // Default to San Francisco
+        longitude: -122.4194,
         latitudeDelta: 0.0922,
         longitudeDelta: 0.0421,
     };
 
+    // Use phase info for display
+    const displayStatus = phaseInfo.title;
+
     return (
         <SafeAreaView className="flex-1 bg-white">
-            <Stack.Screen options={{ title: tripStatus }} />
+            <Stack.Screen options={{ title: displayStatus }} />
 
             <View className="flex-[0.7]">
                 <TripMap
@@ -87,17 +142,32 @@ const TripScreen = () => {
                     initialRegion={initialMapRegion}
                     driverCoords={driverCoords}
                     userPickupCoords={userPickupCoords}
-                    routeToPickupGeoJSON={routeToPickupGeoJSON}
+                    routeToPickupGeoJSON={routeGeometry}
                 />
             </View>
 
             <TripInfo
-                tripStatus={tripStatus}
-                driverName={tripParams.driverName}
-                driverVehicle={tripParams.driverVehicle}
+                tripStatus={displayStatus}
+                driverName={assignedDriver?.username || tripParams.driverName}
+                driverVehicle={tripParams.driverVehicle} // Keep using the vehicle from params for now
                 pickupAddress={tripParams.pickupAddress}
                 price={tripParams.price}
-                isLoadingRoute={isLoadingRoute}
+                isLoadingRoute={isLoadingRide || isLoadingDistance}
+                distance={distance}
+                formattedDistance={formattedDistance}
+                eta={eta}
+                formattedEta={formattedEta}
+                isLoadingDistance={isLoadingDistance}
+                distanceError={distanceError || rideError}
+                lastUpdated={lastUpdated}
+                onRetryDistance={retryDistance}
+                // New phase-aware props
+                currentPhase={currentPhase}
+                phaseInfo={phaseInfo}
+                shouldShowETA={shouldShowETA}
+                distanceLabel={distanceLabel}
+                etaLabel={etaLabel}
+                statusMessage={statusMessage}
             />
         </SafeAreaView>
     );
