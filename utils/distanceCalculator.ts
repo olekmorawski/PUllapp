@@ -1,5 +1,4 @@
 import { getDistance, isValidCoordinate } from 'geolib';
-import axios from 'axios';
 
 export interface Coordinates {
   latitude: number;
@@ -17,15 +16,6 @@ export interface RouteInfo {
   geometry: any; // GeoJSON LineString geometry
   formattedDistance: string;
   formattedDuration: string;
-}
-
-export interface OSRMResponse {
-  code: string;
-  routes: Array<{
-    distance: number;
-    duration: number;
-    geometry: any;
-  }>;
 }
 
 export interface DistanceOptions {
@@ -194,15 +184,15 @@ export function formatDuration(durationInSeconds: number): string {
 }
 
 /**
- * Calculates route using OSRM API with fallback to straight-line distance
+ * Calculates route using shared OSRM client with fallback to straight-line distance
  * 
- * This function integrates with the OSRM (Open Source Routing Machine) API to calculate
- * accurate routes between two points, including real-world road networks, traffic patterns,
- * and turn-by-turn directions. If the OSRM API is unavailable or fails, it automatically
- * falls back to straight-line distance calculation with estimated travel time.
+ * This function uses the shared OSRM client to calculate accurate routes between two points,
+ * including real-world road networks, traffic patterns, and routing. If the OSRM API is 
+ * unavailable or fails, it automatically falls back to straight-line distance calculation 
+ * with estimated travel time.
  * 
  * Features:
- * - Real-world routing using OSRM API
+ * - Real-world routing using shared OSRM client
  * - Automatic fallback to straight-line distance
  * - Route geometry for map display (GeoJSON LineString)
  * - Caching to reduce API calls and improve performance
@@ -247,35 +237,25 @@ export async function calculateRoute(
   }
 
   try {
-    // Use OSRM demo server (in production, use your own OSRM instance)
-    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=full&geometries=geojson`;
+    // Use shared OSRM client
+    const { osrmClient } = await import('./osrmClient');
+    const route = await osrmClient.calculateRoute(from, to);
     
-    const response = await axios.get<OSRMResponse>(osrmUrl, {
-      timeout: 10000, // 10 second timeout
+    const routeInfo: RouteInfo = {
+      distance: route.distance,
+      duration: route.duration,
+      geometry: route.geometry,
+      formattedDistance: formatDistance(route.distance, options),
+      formattedDuration: formatDuration(route.duration)
+    };
+
+    // Cache the result
+    routeCache.set(cacheKey, {
+      route: routeInfo,
+      timestamp: Date.now()
     });
 
-    if (response.data.code === 'Ok' && response.data.routes.length > 0) {
-      const route = response.data.routes[0];
-      const { unit = 'metric' } = options;
-      
-      const routeInfo: RouteInfo = {
-        distance: route.distance,
-        duration: route.duration,
-        geometry: route.geometry,
-        formattedDistance: formatDistance(route.distance, options),
-        formattedDuration: formatDuration(route.duration)
-      };
-
-      // Cache the result
-      routeCache.set(cacheKey, {
-        route: routeInfo,
-        timestamp: Date.now()
-      });
-
-      return routeInfo;
-    } else {
-      throw new Error('No route found');
-    }
+    return routeInfo;
   } catch (error) {
     console.warn('OSRM routing failed, falling back to straight-line distance:', error);
     
