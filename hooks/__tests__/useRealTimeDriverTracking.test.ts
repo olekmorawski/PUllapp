@@ -43,7 +43,7 @@ describe('useRealTimeDriverTracking', () => {
     distance: 5200, // 5.2km in meters (route distance)
     duration: 600, // 10 minutes in seconds
     geometry: {
-      type: 'LineString',
+      type: 'LineString' as const,
       coordinates: [
         [-73.9851, 40.7589],
         [-74.0000, 40.7500],

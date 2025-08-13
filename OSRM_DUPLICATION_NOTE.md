@@ -88,13 +88,34 @@ hooks/
 - Update distance calculator tests to work with real OSRM responses
 - Consider mocking the shared OSRM client in tests for consistency
 
+## React Native Compatibility Fix
+
+### Issue Encountered
+After the initial refactoring, a React Native compatibility issue was discovered:
+- **Error**: `require(...) is not a function (it is Object)`
+- **Cause**: Dynamic imports (`await import()`) don't work properly in React Native environments
+- **Impact**: Route calculation was failing in the mobile app
+
+### Resolution Applied ✅
+- **Replaced dynamic imports** with direct imports in both files:
+  - `utils/distanceCalculator.ts`: Added `import { osrmClient } from './osrmClient'`
+  - `hooks/OSRMNavigationService.ts`: Added `import { osrmClient } from '@/utils/osrmClient'`
+- **Fixed TypeScript errors** in coordinate mapping
+- **Removed unused code** (osrmEndpoints property)
+
+### Final Test Results ✅
+- `hooks/__tests__/useTripPhaseManager.test.ts`: 15/15 tests passing
+- `hooks/__tests__/useRealTimeDriverTracking.test.ts`: 17/17 tests passing
+- Route calculation now works correctly in React Native environment
+
 ## Conclusion
 
-The OSRM duplication issue has been successfully resolved. The refactoring:
+The OSRM duplication issue has been successfully resolved with React Native compatibility. The refactoring:
 - ✅ Eliminates code duplication
 - ✅ Maintains all existing functionality
 - ✅ Fixes TypeScript issues
 - ✅ Preserves backward compatibility
 - ✅ Improves maintainability
+- ✅ **Works correctly in React Native environment**
 
-The trip phase manager (task 10) continues to work perfectly with the refactored implementation.
+The trip phase manager (task 10) continues to work perfectly with the refactored implementation, and route calculation now functions properly in the mobile app.

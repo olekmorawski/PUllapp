@@ -1,5 +1,5 @@
 // app/(app)/trip.tsx - Updated to use real-time data
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,10 +7,10 @@ import Mapbox from '@rnmapbox/maps';
 
 // Custom hooks
 import { useTripState } from '@/hooks/useTripState';
-import { usePickupGeocoding } from '@/hooks/usePickupGeocoding';
 import { useRealTimeDriverTracking } from '@/hooks/useRealTimeDriverTracking';
 import { useRideStatus } from '@/hooks/useRideStatus';
 import { useTripPhaseManager } from '@/hooks/useTripPhaseManager';
+import { useLocation } from '@/hooks/Location/useLocation';
 
 // Components
 import { TripMap, TripInfo } from '@/components/trip';
@@ -25,14 +25,10 @@ const TripScreen = () => {
         setUserPickupCoords,
     } = useTripState();
 
-    // Handle pickup location geocoding
-    const { currentUserLocation } = usePickupGeocoding({
-        pickupAddress: tripParams.pickupAddress,
-        setUserPickupCoords,
-    });
+    // Get user's current location for fallback
+    const { location: currentUserLocation } = useLocation({ autoStart: true });
 
     // Get ride status and assigned driver information
-    // For now, we'll use a mock ride ID until the navigation flow is updated
     const rideId = tripParams.rideId || 'mock-ride-id';
     const {
         ride,
@@ -47,11 +43,19 @@ const TripScreen = () => {
         enabled: true,
     });
 
-    // Passenger locations
-    const passengerPickupLocation = userPickupCoords ? {
-        latitude: userPickupCoords[1],
-        longitude: userPickupCoords[0],
+    // Use coordinates directly from ride data (no geocoding needed)
+    const passengerPickupLocation = ride?.originCoordinates ? {
+        latitude: ride.originCoordinates.latitude,
+        longitude: ride.originCoordinates.longitude,
     } : null;
+
+    // Set userPickupCoords from ride data for backward compatibility with map component
+    useEffect(() => {
+        if (ride?.originCoordinates) {
+            const rideCoords: [number, number] = [ride.originCoordinates.longitude, ride.originCoordinates.latitude];
+            setUserPickupCoords(rideCoords);
+        }
+    }, [ride?.originCoordinates, setUserPickupCoords]);
 
     const passengerDestinationLocation = ride?.destinationCoordinates ? {
         latitude: ride.destinationCoordinates.latitude,
@@ -108,13 +112,13 @@ const TripScreen = () => {
     });
 
     // Convert driver location to coordinate array format for map display
-    const driverCoords: [number, number] | null = driverLocation ? 
+    const driverCoords: [number, number] | null = driverLocation ?
         [driverLocation.longitude, driverLocation.latitude] : null;
 
     // Calculate initial map region
-    const initialMapRegion = currentUserLocation?.coords ? {
-        latitude: currentUserLocation.coords.latitude,
-        longitude: currentUserLocation.coords.longitude,
+    const initialMapRegion = passengerPickupLocation ? {
+        latitude: passengerPickupLocation.latitude,
+        longitude: passengerPickupLocation.longitude,
         latitudeDelta: 0.02,
         longitudeDelta: 0.01,
     } : driverLocation ? {
@@ -122,6 +126,11 @@ const TripScreen = () => {
         longitude: driverLocation.longitude,
         latitudeDelta: 0.0922,
         longitudeDelta: 0.0421,
+    } : currentUserLocation?.coords ? {
+        latitude: currentUserLocation.coords.latitude,
+        longitude: currentUserLocation.coords.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.01,
     } : {
         latitude: 37.7749, // Default to San Francisco
         longitude: -122.4194,

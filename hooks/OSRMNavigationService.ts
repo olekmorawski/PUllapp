@@ -1,6 +1,7 @@
 // services/OSRMNavigationService.ts - Enhanced with Better Route Handling
 import { findNearest, getDistance, isPointNearLine } from 'geolib';
 import * as Location from 'expo-location';
+import { osrmClient } from '@/utils/osrmClient';
 
 export interface NavigationCoordinates {
     latitude: number;
@@ -74,12 +75,6 @@ export class OSRMNavigationService {
     private smoothedHeading: number = 0;
     private headingHistory: number[] = [];
 
-    // OSRM endpoints with fallbacks
-    private osrmEndpoints: string[] = [
-        'https://router.project-osrm.org',
-        'https://routing.openstreetmap.de',
-    ];
-
     // Event system
     on<T extends NavigationEventType>(event: T, callback: (data: NavigationEvents[T]) => void): void {
         if (!this.listeners[event]) {
@@ -125,7 +120,6 @@ export class OSRMNavigationService {
 
         try {
             // Use shared OSRM client with instructions
-            const { osrmClient } = await import('@/utils/osrmClient');
             const routeData = await osrmClient.calculateRouteWithInstructions(start, destination);
 
             // Validate route data
@@ -141,7 +135,7 @@ export class OSRMNavigationService {
             });
 
             return {
-                coordinates: routeData.geometry.coordinates.map((coord: [number, number]) => ({
+                coordinates: routeData.geometry.coordinates.map((coord: any) => ({
                     latitude: coord[1],
                     longitude: coord[0]
                 })),

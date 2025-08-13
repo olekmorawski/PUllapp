@@ -55,24 +55,35 @@ export class OSRMClient {
 
         const url = `${endpoint}/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?${params}`;
 
-        const response = await fetch(url, {
-          signal: AbortSignal.timeout(this.timeout),
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'Navigation-App/1.0',
-          },
-        });
+        // Create AbortController for React Native compatibility
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        try {
+          const response = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'Navigation-App/1.0',
+            },
+          });
 
-        const data: OSRMResponse = await response.json();
+          clearTimeout(timeoutId);
 
-        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-          return data.routes[0];
-        } else {
-          throw new Error('No route found between the specified locations');
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const data: OSRMResponse = await response.json();
+
+          if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+            return data.routes[0];
+          } else {
+            throw new Error('No route found between the specified locations');
+          }
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          throw fetchError;
         }
       } catch (error) {
         console.warn(`OSRM endpoint ${endpoint} failed:`, error);
@@ -103,30 +114,41 @@ export class OSRMClient {
 
         const url = `${endpoint}/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?${params}`;
 
-        const response = await fetch(url, {
-          signal: AbortSignal.timeout(this.timeout),
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'Navigation-App/1.0',
-          },
-        });
+        // Create AbortController for React Native compatibility
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        try {
+          const response = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'Navigation-App/1.0',
+            },
+          });
 
-        const data = await response.json();
+          clearTimeout(timeoutId);
 
-        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-          const route = data.routes[0];
-          return {
-            distance: route.distance,
-            duration: route.duration,
-            geometry: route.geometry,
-            legs: route.legs || []
-          };
-        } else {
-          throw new Error('No route found between the specified locations');
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+
+          if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+            const route = data.routes[0];
+            return {
+              distance: route.distance,
+              duration: route.duration,
+              geometry: route.geometry,
+              legs: route.legs || []
+            };
+          } else {
+            throw new Error('No route found between the specified locations');
+          }
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          throw fetchError;
         }
       } catch (error) {
         console.warn(`OSRM endpoint ${endpoint} failed:`, error);

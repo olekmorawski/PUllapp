@@ -1,4 +1,6 @@
 import { getDistance, isValidCoordinate } from 'geolib';
+import { osrmClient } from './osrmClient';
+import { LineString } from 'geojson';
 
 export interface Coordinates {
   latitude: number;
@@ -13,7 +15,7 @@ export interface DistanceResult {
 export interface RouteInfo {
   distance: number; // in meters
   duration: number; // in seconds
-  geometry: any; // GeoJSON LineString geometry
+  geometry: LineString; // GeoJSON LineString geometry
   formattedDistance: string;
   formattedDuration: string;
 }
@@ -238,7 +240,6 @@ export async function calculateRoute(
 
   try {
     // Use shared OSRM client
-    const { osrmClient } = await import('./osrmClient');
     const route = await osrmClient.calculateRoute(from, to);
     
     const routeInfo: RouteInfo = {
