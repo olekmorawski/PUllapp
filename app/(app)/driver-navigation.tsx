@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import * as Speech from 'expo-speech';
 import * as Location from 'expo-location';
 import { useOSRMNavigation } from '@/hooks/useOSRMNavigation';
+import { useNavigationPhaseManager } from '@/hooks/useNavigationPhaseManager';
 import NavigationMapboxMap, { NavigationMapboxMapRef } from '@/components/NavigationMapboxMap';
 import {
     EtaCard,
@@ -29,7 +30,6 @@ export default function GeofencedDriverNavigationScreen() {
     // State
     const [isMuted, setIsMuted] = useState(false);
     const [showInstructions, setShowInstructions] = useState(true);
-    const [navigationPhase, setNavigationPhase] = useState<NavigationPhase>('to-pickup');
     const [driverLocation, setDriverLocation] = useState<{
         latitude: number;
         longitude: number;
@@ -42,6 +42,7 @@ export default function GeofencedDriverNavigationScreen() {
         modifier?: string;
         instruction: string;
     }>>([]);
+    const [isRouteTransitioning, setIsRouteTransitioning] = useState(false);
 
     console.log('🚗 Geofenced Driver Navigation Screen loaded with params:', params);
 
@@ -115,6 +116,76 @@ export default function GeofencedDriverNavigationScreen() {
         );
     }
 
+    // Navigation phase manager with route transition handling
+    const {
+        currentPhase: navigationPhase,
+        isTransitioning: isPhaseTransitioning,
+        transitionProgress,
+        error: phaseTransitionError,
+        transitionToPhase,
+        clearError: clearPhaseError,
+        cleanup: cleanupPhaseManager
+    } = useNavigationPhaseManager({
+        initialPhase: 'to-pickup',
+        driverLocation: driverLocation || undefined,
+        pickupLocation: { latitude: rideData.pickupLat, longitude: rideData.pickupLng },
+        destinationLocation: { latitude: rideData.destLat, longitude: rideData.destLng },
+        hasActiveRoute: false, // Will be updated based on navigation state
+        isNavigationActive: false, // Will be updated based on navigation state
+        onRouteCleared: () => {
+            console.log('🧹 Route cleared by phase manager');
+            setIsRouteTransitioning(true);
+        },
+        onRouteCalculationRequested: async (origin, destination) => {
+            console.log('📍 Route calculation requested by phase manager', { origin, destination });
+            setIsRouteTransitioning(true);
+            // The OSRM hook will handle the actual route calculation
+        },
+        onNavigationRestarted: async (origin, destination) => {
+            console.log('🚀 Navigation restart requested by phase manager', { origin, destination });
+            setIsRouteTransitioning(true);
+            // The OSRM hook will handle the actual navigation restart
+        },
+        onGeofenceUpdated: (showPickup, showDestination) => {
+            console.log('🎯 Geofence visibility updated by phase manager', { showPickup, showDestination });
+        },
+        onCameraUpdated: (mode) => {
+            console.log('📷 Camera mode updated by phase manager', mode);
+        },
+        onVoiceGuidanceCleared: () => {
+            console.log('🔇 Voice guidance cleared by phase manager');
+            Speech.stop();
+        },
+        onVoiceInstructionAnnounced: (message) => {
+            console.log('🗣️ Voice instruction announced by phase manager:', message);
+            speakInstruction(message);
+        },
+        onPhaseChange: (fromPhase, toPhase) => {
+            console.log(`🔄 Phase changed: ${fromPhase} -> ${toPhase}`);
+            setIsRouteTransitioning(false);
+        },
+        onTransitionStart: (fromPhase, toPhase) => {
+            console.log(`🚀 Phase transition started: ${fromPhase} -> ${toPhase}`);
+            setIsRouteTransitioning(true);
+        },
+        onTransitionComplete: (result) => {
+            console.log('✅ Phase transition completed:', result);
+            setIsRouteTransitioning(false);
+        },
+        onTransitionError: (error, result) => {
+            console.error('❌ Phase transition error:', error, result);
+            setIsRouteTransitioning(false);
+            Alert.alert(
+                'Navigation Transition Error',
+                `Failed to transition navigation phase: ${error}`,
+                [
+                    { text: 'Retry', onPress: () => clearPhaseError() },
+                    { text: 'Cancel', onPress: () => router.back() }
+                ]
+            );
+        }
+    });
+
     // Get driver's current location
     useEffect(() => {
         (async () => {
@@ -178,20 +249,20 @@ export default function GeofencedDriverNavigationScreen() {
         };
     }, []);
 
-    // Geofencing using custom hook
-    const { isInPickupGeofence, isInDestinationGeofence } = useGeofencing({
+    // Geofencing using custom hook with phase manager integration
+    const { isInPickupGeofence, isInDestinationGeofence, geofenceVisibility, cleanup: cleanupGeofencing } = useGeofencing({
         driverLocation,
         pickupLocation: { latitude: rideData.pickupLat, longitude: rideData.pickupLng },
         destinationLocation: { latitude: rideData.destLat, longitude: rideData.destLng },
         navigationPhase,
-        onEnterPickupGeofence: () => {
-            setNavigationPhase('at-pickup');
-            speakInstruction('You have arrived at the pickup location. Waiting for passenger.');
+        onEnterPickupGeofence: async () => {
+            console.log('🎯 Entered pickup geofence, transitioning to at-pickup phase');
+            await transitionToPhase('at-pickup');
             startTimer();
         },
-        onEnterDestinationGeofence: () => {
-            setNavigationPhase('at-destination');
-            speakInstruction('You have arrived at the destination.');
+        onEnterDestinationGeofence: async () => {
+            console.log('🎯 Entered destination geofence, transitioning to at-destination phase');
+            await transitionToPhase('at-destination');
         }
     });
 
@@ -229,7 +300,7 @@ export default function GeofencedDriverNavigationScreen() {
 
     const navConfig = getCurrentNavigationConfig();
 
-    // Use OSRM navigation hook with dynamic origin/destination
+    // Use OSRM navigation hook with dynamic origin/destination and phase transition support
     const {
         isNavigating,
         isLoading,
@@ -238,29 +309,33 @@ export default function GeofencedDriverNavigationScreen() {
         currentHeading,
         progress,
         currentInstruction,
-        nextInstruction,
+
         error,
         startNavigation,
         stopNavigation,
         retryNavigation,
+        clearRoute,
+        restartNavigation,
+        calculateRouteOnly,
         getRouteGeoJSON,
         getMapboxCameraConfig,
         formatDistance,
         formatDuration,
-        getManeuverIcon,
-        navigationService
+        getManeuverIcon
     } = useOSRMNavigation({
         origin: navConfig?.origin || { latitude: 0, longitude: 0 },
         destination: navConfig?.destination || { latitude: 0, longitude: 0 },
         enabled: !!navConfig && !!driverLocation && !locationLoading &&
             navigationPhase !== 'at-pickup' && navigationPhase !== 'at-destination' &&
-            navigationPhase !== 'picking-up' && navigationPhase !== 'completed',
+            navigationPhase !== 'picking-up' && navigationPhase !== 'completed' &&
+            !isPhaseTransitioning,
         onDestinationReached: () => {
             // Geofencing handles arrival detection now
             console.log('Navigation destination reached');
         },
         onNavigationError: (error) => {
             console.error('🚨 Navigation error:', error);
+            setIsRouteTransitioning(false);
             Alert.alert(
                 'Navigation Error',
                 error.message,
@@ -292,9 +367,9 @@ export default function GeofencedDriverNavigationScreen() {
         }
     }, [route]);
 
-    // Auto-start navigation when ready
+    // Auto-start navigation when ready (managed by phase transitions)
     useEffect(() => {
-        if (!isNavigating && !isLoading && !error && navConfig &&
+        if (!isNavigating && !isLoading && !error && navConfig && !isPhaseTransitioning &&
             (navigationPhase === 'to-pickup' || navigationPhase === 'to-destination')) {
             console.log('🚀 Auto-starting navigation for phase:', navigationPhase);
             startNavigation();
@@ -308,7 +383,7 @@ export default function GeofencedDriverNavigationScreen() {
                 }
             }, 1000);
         }
-    }, [navigationPhase, navConfig, isNavigating, isLoading, error, rideData.pickupAddress, rideData.destAddress, speakInstruction, startNavigation]);
+    }, [navigationPhase, navConfig, isNavigating, isLoading, error, isPhaseTransitioning, rideData.pickupAddress, rideData.destAddress, speakInstruction, startNavigation]);
 
     // Update map camera when position changes
     useEffect(() => {
@@ -324,33 +399,76 @@ export default function GeofencedDriverNavigationScreen() {
         }
     }, [currentPosition, currentHeading, getMapboxCameraConfig]);
 
-    // Event handlers
-    const handlePassengerPickup = useCallback(() => {
+    // Event handlers with phase manager integration
+    const handlePassengerPickup = useCallback(async () => {
         stopTimer();
-        setNavigationPhase('picking-up');
-        speakInstruction('Passenger picked up. Starting trip to destination.');
-
-        // Simulate loading passenger and then start navigation to destination
-        setTimeout(() => {
-            setNavigationPhase('to-destination');
-        }, 2000);
-    }, [speakInstruction, stopTimer]);
-
-    const handleTripComplete = useCallback(() => {
-        setNavigationPhase('completed');
-        speakInstruction('Trip completed successfully!');
-
-        Alert.alert(
-            'Trip Completed! 🎉',
-            `Successfully dropped off ${rideData.passengerName} at ${rideData.destAddress}`,
-            [
-                {
-                    text: 'Complete & Rate',
-                    onPress: () => router.replace('/(app)')
+        
+        try {
+            // Transition to picking-up phase
+            await transitionToPhase('picking-up');
+            
+            // Simulate loading passenger and then start navigation to destination
+            setTimeout(async () => {
+                try {
+                    // Clear previous route and transition to destination navigation
+                    clearRoute();
+                    await transitionToPhase('to-destination');
+                    
+                    // Restart navigation with new route from pickup to destination
+                    if (navConfig?.destination) {
+                        await restartNavigation(
+                            { latitude: rideData.pickupLat, longitude: rideData.pickupLng },
+                            navConfig.destination
+                        );
+                    }
+                } catch (error) {
+                    console.error('❌ Failed to transition to destination phase:', error);
+                    Alert.alert(
+                        'Navigation Error',
+                        'Failed to start navigation to destination. Please try again.',
+                        [{ text: 'OK' }]
+                    );
                 }
-            ]
-        );
-    }, [rideData, router, speakInstruction]);
+            }, 2000);
+        } catch (error) {
+            console.error('❌ Failed to transition to picking-up phase:', error);
+            Alert.alert(
+                'Phase Transition Error',
+                'Failed to update navigation phase. Please try again.',
+                [{ text: 'OK' }]
+            );
+        }
+    }, [stopTimer, transitionToPhase, clearRoute, restartNavigation, rideData, navConfig]);
+
+    const handleTripComplete = useCallback(async () => {
+        try {
+            await transitionToPhase('completed');
+            
+            Alert.alert(
+                'Trip Completed! 🎉',
+                `Successfully dropped off ${rideData.passengerName} at ${rideData.destAddress}`,
+                [
+                    {
+                        text: 'Complete & Rate',
+                        onPress: () => router.replace('/(app)')
+                    }
+                ]
+            );
+        } catch (error) {
+            console.error('❌ Failed to complete trip:', error);
+            // Still allow completion even if phase transition fails
+            Alert.alert(
+                'Trip Completed! 🎉',
+                `Successfully dropped off ${rideData.passengerName} at ${rideData.destAddress}`,
+                [
+                    {
+                        text: 'Complete & Rate',
+                        onPress: () => router.replace('/(app)')
+                    }
+                ]
+            );
+        }
+    }, [transitionToPhase, rideData, router]);
 
     const handleBackPress = useCallback(() => {
         Alert.alert(
@@ -408,38 +526,55 @@ export default function GeofencedDriverNavigationScreen() {
         }
     }, [progress]);
 
-    // Cleanup speech on unmount
+    // Cleanup speech, geofencing, and phase manager on unmount
     useEffect(() => {
         return () => {
             Speech.stop();
+            cleanupGeofencing();
+            cleanupPhaseManager();
         };
-    }, []);
+    }, [cleanupGeofencing, cleanupPhaseManager]);
 
     // Show loading state
-    if (locationLoading || (isLoading && !route)) {
+    if (locationLoading || (isLoading && !route) || isRouteTransitioning) {
+        let title = 'Getting Your Location...';
+        let subtitle = 'Please wait while we locate you';
+        
+        if (isRouteTransitioning) {
+            title = 'Updating Navigation...';
+            subtitle = `Transitioning to ${navigationPhase} phase`;
+            if (transitionProgress > 0) {
+                subtitle += ` (${transitionProgress}%)`;
+            }
+        } else if (isLoading && !route) {
+            title = 'Starting Navigation...';
+            subtitle = `Calculating route to ${navConfig?.destinationName}`;
+        }
+        
         return (
             <SafeAreaView className="flex-1 bg-gray-100">
                 <Stack.Screen options={{ headerShown: false }} />
                 <LoadingScreen
-                    title={locationLoading ? 'Getting Your Location...' : 'Starting Navigation...'}
-                    subtitle={locationLoading
-                        ? 'Please wait while we locate you'
-                        : `Calculating route to ${navConfig?.destinationName}`
-                    }
+                    title={title}
+                    subtitle={subtitle}
                 />
             </SafeAreaView>
         );
     }
 
     // Show error state
-    if (error && !route) {
+    if ((error && !route) || phaseTransitionError) {
+        const errorTitle = phaseTransitionError ? 'Phase Transition Error' : 'Navigation Error';
+        const errorMessage = phaseTransitionError || error?.message || 'Unknown error occurred';
+        const onRetry = phaseTransitionError ? clearPhaseError : retryNavigation;
+        
         return (
             <SafeAreaView className="flex-1 bg-gray-100">
                 <Stack.Screen options={{ headerShown: false }} />
                 <ErrorScreen
-                    title="Navigation Error"
-                    message={error.message}
-                    onRetry={retryNavigation}
+                    title={errorTitle}
+                    message={errorMessage}
+                    onRetry={onRetry}
                     onGoBack={() => router.back()}
                 />
             </SafeAreaView>
@@ -520,19 +655,31 @@ export default function GeofencedDriverNavigationScreen() {
                 routeGeoJSON={routeGeoJSON}
                 maneuverPoints={maneuverPoints}
                 geofenceAreas={[
+                    // Pickup geofence
                     {
-                        center: [rideData.pickupLng, rideData.pickupLat],
+                        id: 'pickup-geofence',
+                        center: [rideData.pickupLng, rideData.pickupLat] as [number, number],
                         radius: GEOFENCE_RADIUS_METERS,
                         color: '#4285F4',
-                        opacity: 0.2
+                        opacity: 0.2,
+                        type: 'pickup' as const,
+                        visible: geofenceVisibility.showPickupGeofence
                     },
+                    // Destination geofence
                     {
-                        center: [rideData.destLng, rideData.destLat],
+                        id: 'destination-geofence',
+                        center: [rideData.destLng, rideData.destLat] as [number, number],
                         radius: GEOFENCE_RADIUS_METERS,
                         color: '#34A853',
-                        opacity: 0.2
+                        opacity: 0.2,
+                        type: 'destination' as const,
+                        visible: geofenceVisibility.showDestinationGeofence
                     }
                 ]}
+                navigationPhase={navigationPhase}
+                onGeofenceTransition={(geofenceId, visible) => {
+                    console.log(`🔄 Geofence transition callback: ${geofenceId} -> ${visible ? 'visible' : 'hidden'}`);
+                }}
                 bearing={currentHeading}
                 pitch={60}
                 zoomLevel={18}
