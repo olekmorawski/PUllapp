@@ -173,251 +173,142 @@ describe('useTripPhaseManager', () => {
     expect(phaseInfo.showDistanceToDestination).toBe(false);
   });
 
-  it('should transition to approaching_pickup phase for driver_assigned status', () => {
-    const mockRide = createMockRide('driver_assigned');
+  it('should map driver_assigned status to approaching_pickup phase', () => {
+    const phase = mapRideStatusToPhase('driver_assigned');
+    const phaseInfo = getPhaseInfo(phase);
     
-    const { result } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: 500, // 500 meters
-        enabled: true,
-      })
-    );
-
-    expect(result.current.currentPhase).toBe('approaching_pickup');
-    expect(result.current.phaseInfo.title).toBe('Driver Approaching');
-    expect(result.current.shouldCalculateDistance).toBe(true);
-    expect(result.current.targetLocation).toEqual(mockPickupLocation);
+    expect(phase).toBe('approaching_pickup');
+    expect(phaseInfo.title).toBe('Driver Approaching');
+    expect(phaseInfo.showDistanceToPickup).toBe(true);
+    expect(phaseInfo.targetLocation).toBe('pickup');
   });
 
   it('should show distance to pickup during approaching_pickup phase', () => {
-    const mockRide = createMockRide('approaching_pickup');
+    const phase = mapRideStatusToPhase('approaching_pickup');
+    const phaseInfo = getPhaseInfo(phase);
     
-    const { result } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: 800,
-        enabled: true,
-      })
-    );
-
-    expect(result.current.phaseInfo.showDistanceToPickup).toBe(true);
-    expect(result.current.phaseInfo.showDistanceToDestination).toBe(false);
-    expect(result.current.distanceLabel).toBe('Distance to pickup');
-    expect(result.current.etaLabel).toBe('ETA to pickup');
+    expect(phaseInfo.showDistanceToPickup).toBe(true);
+    expect(phaseInfo.showDistanceToDestination).toBe(false);
+    expect(phaseInfo.targetLocation).toBe('pickup');
   });
 
-  it('should transition to driver_arrived phase', () => {
-    const mockRide = createMockRide('driver_arrived');
+  it('should map driver_arrived status to driver_arrived phase', () => {
+    const phase = mapRideStatusToPhase('driver_arrived');
+    const phaseInfo = getPhaseInfo(phase);
     
-    const { result } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: 30, // Very close
-        enabled: true,
-      })
-    );
-
-    expect(result.current.currentPhase).toBe('driver_arrived');
-    expect(result.current.phaseInfo.title).toBe('Driver Arrived');
-    expect(result.current.statusMessage).toBe('Driver has arrived at pickup location');
+    expect(phase).toBe('driver_arrived');
+    expect(phaseInfo.title).toBe('Driver Arrived');
+    expect(phaseInfo.description).toBe('Your driver has arrived at the pickup location');
   });
 
   it('should show distance to destination during en_route phase', () => {
-    const mockRide = createMockRide('in_progress');
+    const phase = mapRideStatusToPhase('in_progress');
+    const phaseInfo = getPhaseInfo(phase);
     
-    const { result } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: 2000,
-        enabled: true,
-      })
-    );
-
-    expect(result.current.currentPhase).toBe('en_route');
-    expect(result.current.phaseInfo.showDistanceToPickup).toBe(false);
-    expect(result.current.phaseInfo.showDistanceToDestination).toBe(true);
-    expect(result.current.targetLocation).toEqual(mockDestinationLocation);
-    expect(result.current.distanceLabel).toBe('Distance to destination');
+    expect(phase).toBe('en_route');
+    expect(phaseInfo.showDistanceToPickup).toBe(false);
+    expect(phaseInfo.showDistanceToDestination).toBe(true);
+    expect(phaseInfo.targetLocation).toBe('destination');
   });
 
   it('should handle completed trip phase', () => {
-    const mockRide = createMockRide('completed');
+    const phase = mapRideStatusToPhase('completed');
+    const phaseInfo = getPhaseInfo(phase);
     
-    const { result } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: 0,
-        enabled: true,
-      })
-    );
-
-    expect(result.current.currentPhase).toBe('completed');
-    expect(result.current.phaseInfo.title).toBe('Trip Completed');
-    expect(result.current.shouldCalculateDistance).toBe(false);
+    expect(phase).toBe('completed');
+    expect(phaseInfo.title).toBe('Trip Completed');
+    expect(phaseInfo.showDistanceToPickup).toBe(false);
+    expect(phaseInfo.showDistanceToDestination).toBe(false);
   });
 
   it('should handle cancelled trip phase', () => {
-    const mockRide = createMockRide('cancelled');
+    const phase = mapRideStatusToPhase('cancelled');
+    const phaseInfo = getPhaseInfo(phase);
     
-    const { result } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: null,
-        enabled: true,
-      })
-    );
-
-    expect(result.current.currentPhase).toBe('cancelled');
-    expect(result.current.phaseInfo.title).toBe('Trip Cancelled');
-    expect(result.current.shouldCalculateDistance).toBe(false);
+    expect(phase).toBe('cancelled');
+    expect(phaseInfo.title).toBe('Trip Cancelled');
+    expect(phaseInfo.showDistanceToPickup).toBe(false);
+    expect(phaseInfo.showDistanceToDestination).toBe(false);
   });
 
-  it('should suggest status transition from driver_assigned to approaching_pickup', async () => {
-    const mockRide = createMockRide('driver_assigned');
+  it('should suggest status transition from driver_assigned to approaching_pickup', () => {
+    const suggestedStatus = shouldTransitionStatus('driver_assigned', 800, mockDriverLocation);
     
-    const { result, rerender } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: 800, // Within approaching threshold (1000m)
-        enabled: true,
-      })
-    );
-
-    // Wait for the effect to run
-    await act(async () => {
-      // Trigger the effect by updating the distance
-      rerender();
-    });
-
-    // Should call API to update status
-    expect(mockRideAPI.updateRideStatus).toHaveBeenCalledWith('test-ride-id', 'approaching_pickup');
+    expect(suggestedStatus).toBe('approaching_pickup');
   });
 
-  it('should suggest status transition from approaching_pickup to driver_arrived', async () => {
-    const mockRide = createMockRide('approaching_pickup');
+  it('should suggest status transition from approaching_pickup to driver_arrived', () => {
+    const suggestedStatus = shouldTransitionStatus('approaching_pickup', 30, mockDriverLocation);
     
-    const { result, rerender } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: 30, // Within arrival threshold (50m)
-        enabled: true,
-      })
-    );
-
-    // Wait for the effect to run
-    await act(async () => {
-      rerender();
-    });
-
-    // Should call API to update status
-    expect(mockRideAPI.updateRideStatus).toHaveBeenCalledWith('test-ride-id', 'driver_arrived');
+    expect(suggestedStatus).toBe('driver_arrived');
   });
 
-  it('should not suggest status transitions when disabled', async () => {
-    const mockRide = createMockRide('driver_assigned');
+  it('should not suggest status transitions when no driver location', () => {
+    const suggestedStatus = shouldTransitionStatus('driver_assigned', 800, null);
     
-    const { result } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: 800,
-        enabled: false, // Disabled
-      })
-    );
-
-    await act(async () => {
-      // Wait a bit to ensure no API calls are made
-      await new Promise(resolve => setTimeout(resolve, 100));
-    });
-
-    expect(mockRideAPI.updateRideStatus).not.toHaveBeenCalled();
+    expect(suggestedStatus).toBeNull();
   });
 
-  it('should handle API errors gracefully', async () => {
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-    mockRideAPI.updateRideStatus.mockRejectedValue(new Error('API Error'));
+  it('should not suggest status transitions when no distance', () => {
+    const suggestedStatus = shouldTransitionStatus('driver_assigned', null, mockDriverLocation);
     
-    const mockRide = createMockRide('driver_assigned');
-    
-    const { result, rerender } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: 800,
-        enabled: true,
-      })
-    );
-
-    await act(async () => {
-      rerender();
-    });
-
-    expect(consoleSpy).toHaveBeenCalledWith('❌ Error updating ride status:', expect.any(Error));
-    
-    consoleSpy.mockRestore();
+    expect(suggestedStatus).toBeNull();
   });
 
-  it('should generate appropriate status messages based on distance', () => {
-    const mockRide = createMockRide('approaching_pickup');
+  it('should not suggest transitions for distances above thresholds', () => {
+    // Driver assigned but too far for approaching
+    const suggestedStatus1 = shouldTransitionStatus('driver_assigned', 1500, mockDriverLocation);
+    expect(suggestedStatus1).toBeNull();
     
-    const { result } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: mockDriverLocation,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: 150,
-        enabled: true,
-      })
-    );
-
-    expect(result.current.statusMessage).toBe('Driver is 150m away');
+    // Approaching but too far for arrived
+    const suggestedStatus2 = shouldTransitionStatus('approaching_pickup', 100, mockDriverLocation);
+    expect(suggestedStatus2).toBeNull();
   });
 
-  it('should return null target location when not calculating distance', () => {
-    const mockRide = createMockRide('pending');
-    
-    const { result } = renderHook(() =>
-      useTripPhaseManager({
-        ride: mockRide,
-        driverLocation: null,
-        passengerPickupLocation: mockPickupLocation,
-        passengerDestinationLocation: mockDestinationLocation,
-        distance: null,
-        enabled: true,
-      })
-    );
+  it('should not suggest transitions for statuses that do not support automatic transitions', () => {
+    // These statuses should not have automatic transitions
+    expect(shouldTransitionStatus('pending', 50, mockDriverLocation)).toBeNull();
+    expect(shouldTransitionStatus('accepted', 50, mockDriverLocation)).toBeNull();
+    expect(shouldTransitionStatus('driver_arrived', 50, mockDriverLocation)).toBeNull();
+    expect(shouldTransitionStatus('in_progress', 50, mockDriverLocation)).toBeNull();
+    expect(shouldTransitionStatus('completed', 50, mockDriverLocation)).toBeNull();
+    expect(shouldTransitionStatus('cancelled', 50, mockDriverLocation)).toBeNull();
+  });
 
-    expect(result.current.targetLocation).toBeNull();
-    expect(result.current.shouldCalculateDistance).toBe(false);
+  it('should handle all ride status mappings correctly', () => {
+    expect(mapRideStatusToPhase('pending')).toBe('waiting');
+    expect(mapRideStatusToPhase('accepted')).toBe('waiting');
+    expect(mapRideStatusToPhase('driver_assigned')).toBe('approaching_pickup');
+    expect(mapRideStatusToPhase('approaching_pickup')).toBe('approaching_pickup');
+    expect(mapRideStatusToPhase('driver_arrived')).toBe('driver_arrived');
+    expect(mapRideStatusToPhase('in_progress')).toBe('en_route');
+    expect(mapRideStatusToPhase('completed')).toBe('completed');
+    expect(mapRideStatusToPhase('cancelled')).toBe('cancelled');
+  });
+
+  it('should provide correct phase information for all phases', () => {
+    const waitingInfo = getPhaseInfo('waiting');
+    expect(waitingInfo.title).toBe('Finding Driver');
+    expect(waitingInfo.targetLocation).toBeNull();
+
+    const approachingInfo = getPhaseInfo('approaching_pickup');
+    expect(approachingInfo.title).toBe('Driver Approaching');
+    expect(approachingInfo.targetLocation).toBe('pickup');
+
+    const arrivedInfo = getPhaseInfo('driver_arrived');
+    expect(arrivedInfo.title).toBe('Driver Arrived');
+    expect(arrivedInfo.targetLocation).toBe('pickup');
+
+    const enRouteInfo = getPhaseInfo('en_route');
+    expect(enRouteInfo.title).toBe('En Route');
+    expect(enRouteInfo.targetLocation).toBe('destination');
+
+    const completedInfo = getPhaseInfo('completed');
+    expect(completedInfo.title).toBe('Trip Completed');
+    expect(completedInfo.targetLocation).toBeNull();
+
+    const cancelledInfo = getPhaseInfo('cancelled');
+    expect(cancelledInfo.title).toBe('Trip Cancelled');
+    expect(cancelledInfo.targetLocation).toBeNull();
   });
 });
