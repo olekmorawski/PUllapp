@@ -1,5 +1,4 @@
-// components/NavigationMapboxMap.tsx - Updated with pickup prop support
-import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { View, Text, ActivityIndicator, Dimensions, ViewStyle } from 'react-native';
 import {Feature} from "geojson";
 import Mapbox, {UserTrackingMode} from '@rnmapbox/maps';
@@ -36,13 +35,13 @@ const isValidCoordinateArray = (coords: any): coords is [number, number] => {
 };
 
 interface GeofenceArea {
-    id: string; // unique identifier for the geofence
-    center: [number, number]; // [longitude, latitude]
-    radius: number; // radius in meters
+    id: string;
+    center: [number, number];
+    radius: number;
     color?: string;
     opacity?: number;
-    type?: 'pickup' | 'destination'; // type for phase-based filtering
-    visible?: boolean; // explicit visibility control
+    type?: 'pickup' | 'destination';
+    visible?: boolean;
 }
 
 interface NavigationMapboxMapProps {
@@ -58,14 +57,14 @@ interface NavigationMapboxMapProps {
         distance?: number;
     }>;
     geofenceAreas?: GeofenceArea[];
-    navigationPhase?: 'to-pickup' | 'at-pickup' | 'picking-up' | 'to-destination' | 'at-destination' | 'completed'; // for phase-based filtering
+    navigationPhase?: 'to-pickup' | 'at-pickup' | 'picking-up' | 'to-destination' | 'at-destination' | 'completed';
     bearing?: number;
     pitch?: number;
     zoomLevel?: number;
     followMode?: 'none' | 'follow' | 'course' | 'compass';
     onLocationUpdate?: (location: Mapbox.Location) => void;
     onCameraChange?: (state: any) => void;
-    onGeofenceTransition?: (geofenceId: string, visible: boolean) => void; // callback for transition events
+    onGeofenceTransition?: (geofenceId: string, visible: boolean) => void;
     showUserLocation?: boolean;
     showCompass?: boolean;
     showScaleBar?: boolean;
@@ -81,9 +80,8 @@ export interface NavigationMapboxMapRef {
     recenterWithBearing: (bearing?: number) => void;
     flyTo: (coordinates: [number, number], zoom?: number, bearing?: number) => void;
     resetView: () => void;
-    clearMapElements: (elementTypes?: ('geofences' | 'route' | 'markers')[]) => void; // cleanup functionality
-    updateGeofenceVisibility: (geofenceId: string, visible: boolean) => void; // dynamic visibility control
-    // Camera transition methods
+    clearMapElements: (elementTypes?: ('geofences' | 'route' | 'markers')[]) => void;
+    updateGeofenceVisibility: (geofenceId: string, visible: boolean) => void;
     transitionToRouteOverview: (pickupCoordinate: [number, number], destinationCoordinate: [number, number], duration?: number) => Promise<void>;
     transitionToFollowMode: (driverLocation: [number, number], bearing?: number, duration?: number) => Promise<void>;
     transitionWithBounds: (coordinates: [number, number][], padding?: { top?: number; bottom?: number; left?: number; right?: number }, duration?: number) => Promise<void>;
@@ -119,24 +117,22 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
     const [mapError, setMapError] = useState<string | null>(null);
     const [lastCameraUpdate, setLastCameraUpdate] = useState<number>(0);
     const [followMode, setFollowMode] = useState<'none' | 'follow' | 'course' | 'compass'>('follow');
-    
-    // Geofence state management
-    const [visibleGeofences, setVisibleGeofences] = useState<Set<string>>(new Set());
-    const [transitioningGeofences, setTransitioningGeofences] = useState<Set<string>>(new Set());
+
+    // Geofence state management - simplified to prevent infinite loops
+    const [visibleGeofences, setVisibleGeofences] = useState<Map<string, boolean>>(new Map());
     const geofenceTransitionTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
     // Validate props
-    const validDriverLocation = isValidCoordinate(driverLocation) ? driverLocation : null;
-    const validPickup = isValidCoordinate(pickup) ? pickup : null;
-    const validDestination = isValidCoordinate(destination) ? destination : null;
-    const validBearing = isValidNumber(bearing) ? bearing : 0;
-    const validPitch = isValidNumber(pitch) ? Math.max(0, Math.min(60, pitch)) : 60;
-    const validZoomLevel = isValidNumber(zoomLevel) ? Math.max(1, Math.min(22, zoomLevel)) : 18;
+    const validDriverLocation = useMemo(() => isValidCoordinate(driverLocation) ? driverLocation : null, [driverLocation]);
+    const validPickup = useMemo(() => isValidCoordinate(pickup) ? pickup : null, [pickup]);
+    const validDestination = useMemo(() => isValidCoordinate(destination) ? destination : null, [destination]);
+    const validBearing = useMemo(() => isValidNumber(bearing) ? bearing : 0, [bearing]);
+    const validPitch = useMemo(() => isValidNumber(pitch) ? Math.max(0, Math.min(60, pitch)) : 60, [pitch]);
+    const validZoomLevel = useMemo(() => isValidNumber(zoomLevel) ? Math.max(1, Math.min(22, zoomLevel)) : 18, [zoomLevel]);
 
-    // Filter geofences based on navigation phase and visibility
-    const getVisibleGeofenceAreas = useCallback((): GeofenceArea[] => {
+    // Memoized visible geofence areas to prevent recalculation on every render
+    const visibleGeofenceAreas = useMemo(() => {
         if (!navigationPhase) {
-            // If no phase provided, show all geofences that are explicitly visible
             return geofenceAreas.filter(geofence => geofence.visible !== false);
         }
 
@@ -151,13 +147,11 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 case 'at-pickup':
                     return geofence.type === 'pickup' || !geofence.type;
                 case 'picking-up':
-                    // During transition, hide all geofences temporarily
                     return false;
                 case 'to-destination':
                 case 'at-destination':
                     return geofence.type === 'destination' || !geofence.type;
                 case 'completed':
-                    // Hide all geofences when trip is completed
                     return false;
                 default:
                     return geofence.visible !== false;
@@ -165,81 +159,86 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         });
     }, [geofenceAreas, navigationPhase]);
 
-    const visibleGeofenceAreas = getVisibleGeofenceAreas();
+    // Stable callback for geofence transitions
+    const stableOnGeofenceTransition = useCallback((geofenceId: string, visible: boolean) => {
+        onGeofenceTransition?.(geofenceId, visible);
+    }, [onGeofenceTransition]);
 
-    // Geofence transition management
+    // Geofence transition management - simplified to prevent infinite loops
     const handleGeofenceTransition = useCallback((geofenceId: string, shouldBeVisible: boolean) => {
-        const currentlyVisible = visibleGeofences.has(geofenceId);
-        
-        if (currentlyVisible === shouldBeVisible) return;
+        const currentlyVisible = visibleGeofences.get(geofenceId) ?? false;
+
+        if (currentlyVisible === shouldBeVisible) {
+            return;
+        }
 
         console.log(`🔄 Geofence transition: ${geofenceId} -> ${shouldBeVisible ? 'visible' : 'hidden'}`);
-        
+
         // Clear any existing timeout for this geofence
         const existingTimeout = geofenceTransitionTimeouts.current.get(geofenceId);
         if (existingTimeout) {
             clearTimeout(existingTimeout);
+            geofenceTransitionTimeouts.current.delete(geofenceId);
         }
 
-        // Mark as transitioning
-        setTransitioningGeofences(prev => new Set([...prev, geofenceId]));
+        // Update visibility immediately
+        setVisibleGeofences(prev => {
+            const newMap = new Map(prev);
+            newMap.set(geofenceId, shouldBeVisible);
+            return newMap;
+        });
 
-        // Smooth transition with delay
+        // Notify parent after a small delay to prevent rapid state changes
         const timeout = setTimeout(() => {
-            setVisibleGeofences(prev => {
-                const newSet = new Set(prev);
-                if (shouldBeVisible) {
-                    newSet.add(geofenceId);
-                } else {
-                    newSet.delete(geofenceId);
-                }
-                return newSet;
-            });
-
-            setTransitioningGeofences(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(geofenceId);
-                return newSet;
-            });
-
+            stableOnGeofenceTransition(geofenceId, shouldBeVisible);
             geofenceTransitionTimeouts.current.delete(geofenceId);
-            onGeofenceTransition?.(geofenceId, shouldBeVisible);
-        }, 300); // 300ms transition delay
+        }, 100);
 
         geofenceTransitionTimeouts.current.set(geofenceId, timeout);
-    }, [visibleGeofences, onGeofenceTransition]);
+    }, [visibleGeofences, stableOnGeofenceTransition]);
 
-    // Update geofence visibility when phase or areas change
+    // Update geofence visibility when areas or phase changes - debounced to prevent loops
     useEffect(() => {
-        visibleGeofenceAreas.forEach(geofence => {
-            handleGeofenceTransition(geofence.id, true);
-        });
+        let timeoutId: ReturnType<typeof setTimeout>;
 
-        // Hide geofences that are no longer in the visible list
-        const visibleIds = new Set(visibleGeofenceAreas.map(g => g.id));
-        visibleGeofences.forEach(geofenceId => {
-            if (!visibleIds.has(geofenceId)) {
-                handleGeofenceTransition(geofenceId, false);
+        const updateVisibility = () => {
+            const visibleIds = new Set(visibleGeofenceAreas.map(g => g.id));
+
+            // Show geofences that should be visible
+            visibleGeofenceAreas.forEach(geofence => {
+                const currentlyVisible = visibleGeofences.get(geofence.id) ?? false;
+                if (!currentlyVisible) {
+                    handleGeofenceTransition(geofence.id, true);
+                }
+            });
+
+            // Hide geofences that should not be visible
+            visibleGeofences.forEach((isVisible, geofenceId) => {
+                if (isVisible && !visibleIds.has(geofenceId)) {
+                    handleGeofenceTransition(geofenceId, false);
+                }
+            });
+        };
+
+        // Debounce the update to prevent rapid state changes
+        timeoutId = setTimeout(updateVisibility, 50);
+
+        return () => {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
             }
-        });
-    }, [visibleGeofenceAreas, handleGeofenceTransition]);
+        };
+    }, [visibleGeofenceAreas, visibleGeofences, handleGeofenceTransition]);
 
     // Cleanup function for map elements
     const clearMapElements = useCallback((elementTypes: ('geofences' | 'route' | 'markers')[] = ['geofences', 'route', 'markers']) => {
         console.log('🧹 Clearing map elements:', elementTypes);
 
         if (elementTypes.includes('geofences')) {
-            // Clear all geofence timeouts
             geofenceTransitionTimeouts.current.forEach(timeout => clearTimeout(timeout));
             geofenceTransitionTimeouts.current.clear();
-            
-            // Clear geofence state
-            setVisibleGeofences(new Set());
-            setTransitioningGeofences(new Set());
+            setVisibleGeofences(new Map());
         }
-
-        // Note: Route and markers are handled by parent component state changes
-        // This function provides a centralized cleanup interface
     }, []);
 
     // Update individual geofence visibility
@@ -257,52 +256,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
     }, []);
 
     // Camera transition utilities
-    const calculateRouteBounds = useCallback((
-        pickupCoordinate: [number, number],
-        destinationCoordinate: [number, number],
-        padding: { top?: number; bottom?: number; left?: number; right?: number } = {}
-    ) => {
-        const [pickupLng, pickupLat] = pickupCoordinate;
-        const [destLng, destLat] = destinationCoordinate;
-
-        // Calculate bounds
-        const minLng = Math.min(pickupLng, destLng);
-        const maxLng = Math.max(pickupLng, destLng);
-        const minLat = Math.min(pickupLat, destLat);
-        const maxLat = Math.max(pickupLat, destLat);
-
-        // Add padding (convert to degrees approximately)
-        const paddingLng = Math.max((maxLng - minLng) * 0.2, 0.01); // 20% padding, minimum 0.01 degrees
-        const paddingLat = Math.max((maxLat - minLat) * 0.2, 0.01); // 20% padding, minimum 0.01 degrees
-
-        const bounds = {
-            ne: [maxLng + paddingLng, maxLat + paddingLat] as [number, number],
-            sw: [minLng - paddingLng, minLat - paddingLat] as [number, number]
-        };
-
-        // Calculate center
-        const centerCoordinate: [number, number] = [
-            (minLng + maxLng) / 2,
-            (minLat + maxLat) / 2
-        ];
-
-        // Calculate appropriate zoom level based on distance
-        const distance = calculateDistance(pickupCoordinate, destinationCoordinate);
-        let zoom = 14; // Default zoom
-
-        if (distance < 1000) { // Less than 1km
-            zoom = 16;
-        } else if (distance < 5000) { // Less than 5km
-            zoom = 14;
-        } else if (distance < 20000) { // Less than 20km
-            zoom = 12;
-        } else {
-            zoom = 10;
-        }
-
-        return { centerCoordinate, zoom, bounds };
-    }, []);
-
     const calculateDistance = useCallback((
         coord1: [number, number],
         coord2: [number, number]
@@ -324,6 +277,38 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         return R * c;
     }, []);
 
+    const calculateRouteBounds = useCallback((
+        pickupCoordinate: [number, number],
+        destinationCoordinate: [number, number],
+        padding: { top?: number; bottom?: number; left?: number; right?: number } = {}
+    ) => {
+        const [pickupLng, pickupLat] = pickupCoordinate;
+        const [destLng, destLat] = destinationCoordinate;
+
+        const minLng = Math.min(pickupLng, destLng);
+        const maxLng = Math.max(pickupLng, destLng);
+        const minLat = Math.min(pickupLat, destLat);
+        const maxLat = Math.max(pickupLat, destLat);
+
+        const paddingLng = Math.max((maxLng - minLng) * 0.2, 0.01);
+        const paddingLat = Math.max((maxLat - minLat) * 0.2, 0.01);
+
+        const centerCoordinate: [number, number] = [
+            (minLng + maxLng) / 2,
+            (minLat + maxLat) / 2
+        ];
+
+        const distance = calculateDistance(pickupCoordinate, destinationCoordinate);
+        let zoom = 14;
+
+        if (distance < 1000) zoom = 16;
+        else if (distance < 5000) zoom = 14;
+        else if (distance < 20000) zoom = 12;
+        else zoom = 10;
+
+        return { centerCoordinate, zoom };
+    }, [calculateDistance]);
+
     // Camera transition methods
     const transitionToRouteOverview = useCallback(async (
         pickupCoordinate: [number, number],
@@ -335,21 +320,19 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         }
 
         try {
-            console.log('🗺️ Transitioning to route overview:', { pickupCoordinate, destinationCoordinate });
-            
-            const routeBounds = calculateRouteBounds(pickupCoordinate, destinationCoordinate);
-            
+            console.log('🗺️ Transitioning to route overview');
+
+            const { centerCoordinate, zoom } = calculateRouteBounds(pickupCoordinate, destinationCoordinate);
+
             await cameraRef.current.setCamera({
-                centerCoordinate: routeBounds.centerCoordinate,
-                zoomLevel: routeBounds.zoom,
-                pitch: 0, // Top-down view for route overview
-                heading: 0, // North up
+                centerCoordinate,
+                zoomLevel: zoom,
+                pitch: 0,
+                heading: 0,
                 animationDuration: duration,
             });
 
-            // Wait for animation to complete
             await new Promise(resolve => setTimeout(resolve, duration));
-            
             console.log('✅ Route overview transition completed');
         } catch (error) {
             console.error('❌ Route overview transition failed:', error);
@@ -367,22 +350,18 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         }
 
         try {
-            console.log('🎯 Transitioning to follow mode:', { driverLocation, bearing });
-            
+            console.log('🎯 Transitioning to follow mode');
+
             await cameraRef.current.setCamera({
                 centerCoordinate: driverLocation,
                 zoomLevel: 18,
-                pitch: 60, // Navigation view
+                pitch: 60,
                 heading: bearing,
                 animationDuration: duration,
             });
 
-            // Wait for animation to complete
             await new Promise(resolve => setTimeout(resolve, duration));
-            
-            // Re-enable follow mode
             setFollowMode('course');
-            
             console.log('✅ Follow mode transition completed');
         } catch (error) {
             console.error('❌ Follow mode transition failed:', error);
@@ -400,35 +379,24 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         }
 
         try {
-            console.log('📐 Transitioning with bounds:', { coordinates, padding });
-            
-            // Calculate bounds for all coordinates
+            console.log('📐 Transitioning with bounds');
+
             const lngs = coordinates.map(coord => coord[0]);
             const lats = coordinates.map(coord => coord[1]);
-            
-            const minLng = Math.min(...lngs);
-            const maxLng = Math.max(...lngs);
-            const minLat = Math.min(...lats);
-            const maxLat = Math.max(...lats);
-            
-            // Add padding
-            const paddingLng = Math.max((maxLng - minLng) * 0.1, 0.01);
-            const paddingLat = Math.max((maxLat - minLat) * 0.1, 0.01);
-            
+
             const centerCoordinate: [number, number] = [
-                (minLng + maxLng) / 2,
-                (minLat + maxLat) / 2
+                (Math.min(...lngs) + Math.max(...lngs)) / 2,
+                (Math.min(...lats) + Math.max(...lats)) / 2
             ];
-            
-            // Calculate zoom based on bounds
-            const distance = calculateDistance([minLng, minLat], [maxLng, maxLat]);
+
+            const distance = calculateDistance([Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]);
             let zoom = 14;
-            
+
             if (distance < 1000) zoom = 16;
             else if (distance < 5000) zoom = 14;
             else if (distance < 20000) zoom = 12;
             else zoom = 10;
-            
+
             await cameraRef.current.setCamera({
                 centerCoordinate,
                 zoomLevel: zoom,
@@ -437,9 +405,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 animationDuration: duration,
             });
 
-            // Wait for animation to complete
             await new Promise(resolve => setTimeout(resolve, duration));
-            
             console.log('✅ Bounds transition completed');
         } catch (error) {
             console.error('❌ Bounds transition failed:', error);
@@ -452,7 +418,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         centerOnDriver: () => {
             if (validDriverLocation && cameraRef.current && isMapReady) {
                 try {
-                    console.log('📍 Centering on driver location:', validDriverLocation);
+                    console.log('📍 Centering on driver location');
                     cameraRef.current.setCamera({
                         centerCoordinate: [validDriverLocation.longitude, validDriverLocation.latitude],
                         zoomLevel: validZoomLevel,
@@ -487,7 +453,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 try {
                     const safeZoom = isValidNumber(zoom) ? Math.max(1, Math.min(22, zoom)) : validZoomLevel;
                     const safeBearing = isValidNumber(newBearing) ? newBearing : validBearing;
-                    console.log('✈️ Flying to coordinates:', coordinates, 'zoom:', safeZoom, 'bearing:', safeBearing);
+                    console.log('✈️ Flying to coordinates');
                     cameraRef.current.setCamera({
                         centerCoordinate: coordinates,
                         zoomLevel: safeZoom,
@@ -518,31 +484,39 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
         },
         clearMapElements,
         updateGeofenceVisibility,
-        // Camera transition methods
         transitionToRouteOverview,
         transitionToFollowMode,
         transitionWithBounds
-    }), [validDriverLocation, validBearing, validPitch, validZoomLevel, isMapReady, clearMapElements, updateGeofenceVisibility, transitionToRouteOverview, transitionToFollowMode, transitionWithBounds]);
+    }), [
+        validDriverLocation,
+        validBearing,
+        validPitch,
+        validZoomLevel,
+        isMapReady,
+        clearMapElements,
+        updateGeofenceVisibility,
+        transitionToRouteOverview,
+        transitionToFollowMode,
+        transitionWithBounds
+    ]);
 
-    // Auto-follow driver location with smooth transitions
+    // Auto-follow driver location with throttled updates
     useEffect(() => {
         if (!isMapReady || !cameraRef.current || !validDriverLocation || followMode === 'none') {
             return;
         }
 
-        // Throttle camera updates
         const now = Date.now();
         if (now - lastCameraUpdate < 1000) {
             return;
         }
 
+        let timeoutId: ReturnType<typeof setTimeout>;
+
         const updateCamera = async () => {
             if (isLoading) return;
 
-            setIsLoading(true);
             try {
-                console.log('📱 Auto-updating camera to follow driver');
-
                 const cameraConfig: any = {
                     centerCoordinate: [validDriverLocation.longitude, validDriverLocation.latitude],
                     zoomLevel: validZoomLevel,
@@ -550,7 +524,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     animationDuration: 1000,
                 };
 
-                // Add heading based on follow mode
                 if (followMode === 'course' || followMode === 'compass') {
                     cameraConfig.heading = validBearing;
                 }
@@ -560,22 +533,19 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 setMapError(null);
             } catch (error) {
                 console.warn('Auto camera update error:', error);
-            } finally {
-                setIsLoading(false);
             }
         };
 
-        const timeoutId = setTimeout(updateCamera, 100);
+        timeoutId = setTimeout(updateCamera, 100);
         return () => clearTimeout(timeoutId);
-    }, [isMapReady, validDriverLocation, validBearing, validPitch, validZoomLevel, followMode, lastCameraUpdate]);
+    }, [isMapReady, validDriverLocation, validBearing, validPitch, validZoomLevel, followMode, lastCameraUpdate, isLoading]);
 
-    // Map event handlers
+    // Map event handlers with stable references
     const handleMapLoaded = useCallback(() => {
         console.log('🗺️ Navigation map loaded and ready');
         setIsMapReady(true);
         setMapError(null);
 
-        // Initial camera setup
         if (validDriverLocation && cameraRef.current) {
             setTimeout(() => {
                 cameraRef.current?.setCamera({
@@ -613,7 +583,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
     }, [onLocationUpdate]);
 
     // Enhanced route styling with better visibility
-    const routeStyles = {
+    const routeStyles = useMemo(() => ({
         routeCasing: {
             lineColor: '#000000',
             lineWidth: 14,
@@ -635,73 +605,71 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
             lineJoin: 'round' as const,
             lineOpacity: 1.0
         }
-    };
+    }), []);
 
-    // Component styles
-    const containerStyle: ViewStyle = { flex: 1 };
-
-    const errorStyle: ViewStyle = {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(245, 245, 245, 0.9)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 1000,
-    };
-
-    const loaderStyle: ViewStyle = {
-        position: 'absolute',
-        top: SCREEN_HEIGHT / 2 - 25,
-        left: SCREEN_WIDTH / 2 - 25,
-        zIndex: 1000,
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        borderRadius: 25,
-        width: 50,
-        height: 50,
-        alignItems: 'center',
-        justifyContent: 'center',
-    };
-
-    const destinationMarkerStyle: ViewStyle = {
-        width: 40,
-        height: 40,
-        backgroundColor: '#EA4335',
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 3,
-        borderColor: 'white',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        elevation: 5,
-    };
-
-    const pickupMarkerStyle: ViewStyle = {
-        width: 40,
-        height: 40,
-        backgroundColor: '#4285F4',
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 3,
-        borderColor: 'white',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        elevation: 5,
-    };
+    // Component styles - memoized to prevent recreation
+    const styles = useMemo(() => ({
+        container: { flex: 1 } as ViewStyle,
+        error: {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(245, 245, 245, 0.9)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1000,
+        } as ViewStyle,
+        loader: {
+            position: 'absolute',
+            top: SCREEN_HEIGHT / 2 - 25,
+            left: SCREEN_WIDTH / 2 - 25,
+            zIndex: 1000,
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            borderRadius: 25,
+            width: 50,
+            height: 50,
+            alignItems: 'center',
+            justifyContent: 'center',
+        } as ViewStyle,
+        destinationMarker: {
+            width: 40,
+            height: 40,
+            backgroundColor: '#EA4335',
+            borderRadius: 20,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 3,
+            borderColor: 'white',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.3,
+            shadowRadius: 4,
+            elevation: 5,
+        } as ViewStyle,
+        pickupMarker: {
+            width: 40,
+            height: 40,
+            backgroundColor: '#4285F4',
+            borderRadius: 20,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 3,
+            borderColor: 'white',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.3,
+            shadowRadius: 4,
+            elevation: 5,
+        } as ViewStyle
+    }), []);
 
     // Show error state
     if (mapError) {
         return (
-            <View style={containerStyle}>
-                <View style={errorStyle}>
+            <View style={styles.container}>
+                <View style={styles.error}>
                     <View style={{
                         backgroundColor: 'white',
                         borderRadius: 20,
@@ -740,9 +708,9 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
     }
 
     return (
-        <View style={containerStyle}>
+        <View style={styles.container}>
             {isLoading && (
-                <View style={loaderStyle}>
+                <View style={styles.loader}>
                     <ActivityIndicator size="small" color="#4285F4" />
                 </View>
             )}
@@ -754,7 +722,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 logoEnabled={false}
                 attributionEnabled={false}
                 onTouchStart={() => {
-                    // Disable camera following when user touches map
                     if (followMode !== 'none') {
                         setFollowMode('none');
                     }
@@ -766,9 +733,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                 scrollEnabled={enableScrolling}
                 onDidFinishLoadingMap={handleMapLoaded}
                 onCameraChanged={handleCameraChanged}
-
             >
-                {/* Camera with navigation-specific settings */}
                 <Mapbox.Camera
                     ref={cameraRef}
                     followUserLocation={followMode !== 'none'}
@@ -783,7 +748,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     followPitch={pitch}
                 />
 
-                {/* User Location with custom puck */}
                 {showUserLocation && (
                     <Mapbox.UserLocation
                         visible={true}
@@ -793,23 +757,19 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     />
                 )}
 
-                {/* Route layers */}
                 {routeGeoJSON && routeGeoJSON.geometry && (
                     <Mapbox.ShapeSource
                         id="routeSource"
                         shape={routeGeoJSON}
-
                     >
                         <Mapbox.LineLayer
                             id="routeCasing"
                             style={routeStyles.routeCasing}
                         />
-
                         <Mapbox.LineLayer
                             id="routeOutline"
                             style={routeStyles.routeOutline}
                         />
-
                         <Mapbox.LineLayer
                             id="routeLayer"
                             style={routeStyles.routeLine}
@@ -817,7 +777,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     </Mapbox.ShapeSource>
                 )}
 
-                {/* Road-fitted navigation arrows */}
                 {routeGeoJSON && maneuverPoints.length > 0 && (
                     <FixedRoadFittedArrows
                         routeGeoJSON={routeGeoJSON}
@@ -826,15 +785,11 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     />
                 )}
 
-                {/* Geofence Areas with smooth transitions */}
-                {visibleGeofenceAreas.map((geofence, index) => {
-                    const isVisible = visibleGeofences.has(geofence.id);
-                    const isTransitioning = transitioningGeofences.has(geofence.id);
-                    
-                    // Skip rendering if not visible and not transitioning
-                    if (!isVisible && !isTransitioning) return null;
+                {visibleGeofenceAreas.map((geofence) => {
+                    const isVisible = visibleGeofences.get(geofence.id) ?? false;
 
-                    // Create a circle using GeoJSON
+                    if (!isVisible) return null;
+
                     const createCircle = (center: [number, number], radiusInMeters: number, points: number = 64): GeoJSON.Polygon => {
                         const coords = [];
                         const distanceX = radiusInMeters / (111320 * Math.cos(center[1] * Math.PI / 180));
@@ -846,7 +801,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                             const y = distanceY * Math.sin(theta);
                             coords.push([center[0] + x, center[1] + y]);
                         }
-                        coords.push(coords[0]); // Close the polygon
+                        coords.push(coords[0]);
 
                         return {
                             type: 'Polygon',
@@ -855,11 +810,6 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                     };
 
                     const circleGeoJSON = createCircle(geofence.center, geofence.radius);
-                    
-                    // Calculate opacity for smooth transitions
-                    const baseOpacity = geofence.opacity || 0.2;
-                    const transitionOpacity = isTransitioning ? baseOpacity * 0.5 : baseOpacity;
-                    const finalOpacity = isVisible ? transitionOpacity : 0;
 
                     return (
                         <Mapbox.ShapeSource
@@ -869,9 +819,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                                 type: 'Feature',
                                 properties: {
                                     id: geofence.id,
-                                    type: geofence.type || 'unknown',
-                                    visible: isVisible,
-                                    transitioning: isTransitioning
+                                    type: geofence.type || 'unknown'
                                 },
                                 geometry: circleGeoJSON
                             }}
@@ -880,7 +828,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                                 id={`geofenceFill-${geofence.id}`}
                                 style={{
                                     fillColor: geofence.color || '#4285F4',
-                                    fillOpacity: finalOpacity
+                                    fillOpacity: geofence.opacity || 0.2
                                 }}
                             />
                             <Mapbox.LineLayer
@@ -888,32 +836,30 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
                                 style={{
                                     lineColor: geofence.color || '#4285F4',
                                     lineWidth: 2,
-                                    lineOpacity: isVisible ? 0.5 : 0
+                                    lineOpacity: 0.5
                                 }}
                             />
                         </Mapbox.ShapeSource>
                     );
                 })}
 
-                {/* Pickup Marker (if provided and different from destination) */}
                 {validPickup && (
                     <Mapbox.PointAnnotation
                         id="pickup"
                         coordinate={[validPickup.longitude, validPickup.latitude]}
                     >
-                        <View style={pickupMarkerStyle}>
+                        <View style={styles.pickupMarker}>
                             <Ionicons name="person" size={20} color="white" />
                         </View>
                     </Mapbox.PointAnnotation>
                 )}
 
-                {/* Destination Marker */}
                 {validDestination && (
                     <Mapbox.PointAnnotation
                         id="destination"
                         coordinate={[validDestination.longitude, validDestination.latitude]}
                     >
-                        <View style={destinationMarkerStyle}>
+                        <View style={styles.destinationMarker}>
                             <Ionicons name="location" size={20} color="white" />
                         </View>
                     </Mapbox.PointAnnotation>
@@ -925,7 +871,7 @@ const NavigationMapboxMap = forwardRef<NavigationMapboxMapRef, NavigationMapboxM
     );
 });
 
-// Fixed Road-Fitted Arrows component
+// Fixed Road-Fitted Arrows component with stable props
 interface FixedRoadFittedArrowsProps {
     routeGeoJSON: Feature | null;
     maneuverPoints: Array<{
@@ -938,40 +884,30 @@ interface FixedRoadFittedArrowsProps {
     currentPosition?: { latitude: number; longitude: number } | null;
 }
 
-const FixedRoadFittedArrows: React.FC<FixedRoadFittedArrowsProps> = ({
-                                                                         routeGeoJSON,
-                                                                         maneuverPoints,
-                                                                         currentPosition
-                                                                     }) => {
-    // Calculate distance to current position for color/animation logic
-    const calculateDistance = (point: [number, number]): number => {
-        if (!currentPosition) return 1000; // Default distance if no position
+const FixedRoadFittedArrows: React.FC<FixedRoadFittedArrowsProps> = React.memo(({
+                                                                                    routeGeoJSON,
+                                                                                    maneuverPoints,
+                                                                                    currentPosition
+                                                                                }) => {
+    const calculateDistance = useCallback((point: [number, number]): number => {
+        if (!currentPosition) return 1000;
 
         const dx = point[0] - currentPosition.longitude;
         const dy = point[1] - currentPosition.latitude;
-        // Simple distance calculation (not perfect but good enough for coloring)
-        return Math.sqrt(dx * dx + dy * dy) * 111320; // Rough meters conversion
-    };
-
-    // Color logic matching the SVG version
-    const getManeuverColor = (distance: number): string => {
-        return '#EA4335'; // Always red
-    };
+        return Math.sqrt(dx * dx + dy * dy) * 111320;
+    }, [currentPosition]);
 
     if (!routeGeoJSON || maneuverPoints.length === 0) {
         return null;
     }
 
-    // Show ALL maneuver points (same as SVG version), not filtered by distance
     return (
         <>
             {maneuverPoints.map((point, index) => {
                 const distance = calculateDistance(point.coordinate);
                 const isNextManeuver = index === 0;
-                const color = getManeuverColor(distance);
                 const shouldAnimate = isNextManeuver && distance < 100;
 
-                // Opacity based on distance for visual hierarchy
                 let opacity = 1.0;
                 if (distance > 1000) opacity = 0.4;
                 else if (distance > 500) opacity = 0.6;
@@ -986,17 +922,18 @@ const FixedRoadFittedArrows: React.FC<FixedRoadFittedArrowsProps> = ({
                             uniqueIndex: index
                         }}
                         uniqueKey={`${index}-${point.coordinate[0].toFixed(6)}-${point.coordinate[1].toFixed(6)}`}
-                        color={color}
+                        color="#EA4335"
                         opacity={opacity}
-                        arrowLength={shouldAnimate ? 60 : 50} // Longer for next maneuver
-                        arrowWidth={shouldAnimate ? 14 : 12}  // Wider for next maneuver
+                        arrowLength={shouldAnimate ? 60 : 50}
+                        arrowWidth={shouldAnimate ? 14 : 12}
                     />
                 );
             })}
         </>
     );
-};
+});
 
 NavigationMapboxMap.displayName = 'NavigationMapboxMap';
+FixedRoadFittedArrows.displayName = 'FixedRoadFittedArrows';
 
 export default NavigationMapboxMap;
